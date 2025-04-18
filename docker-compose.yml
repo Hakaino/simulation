@@ -1,0 +1,20 @@
+version: '3.4'
+services:
+  development:
+    container_name: drones_dev
+    build:
+      context: .
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - type: bind
+        source: /home/rambo/Projects/Drones
+        target: /workspace
+      - type: bind
+        source: /home/rambo/.ssh/
+        target: /root/.ssh/
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    command: /bin/bash
+    network_mode: host

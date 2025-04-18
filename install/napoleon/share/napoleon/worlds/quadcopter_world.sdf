@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <world name="simple_world">
+    <!-- Include the ground plane and sun -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <!-- A simple box model at the origin -->
+    <model name="box">
+      <pose>0 0 0.5 0 0 0</pose>
+      <link name="link">
+        <pose>0 0 0 0 0 0</pose>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1 1 1</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1 1 1</size>
+            </box>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Camera for a fixed view -->
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+    </scene>
+    <gui>
+      <camera name="user_camera">
+        <pose>2 2 2 0 0 0</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+  </world>
+</sdf>

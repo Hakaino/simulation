@@ -1,0 +1,38 @@
+[0.801s] Invoking command in '/workspace/src/napoleon': PYTHONPATH=/workspace/build/napoleon/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/workspace/install/napoleon/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/napoleon build --build-base /workspace/build/napoleon/build install --record /workspace/build/napoleon/install.log --single-version-externally-managed install_data
+[1.047s] running egg_info
+[1.047s] creating ../../build/napoleon/napoleon.egg-info
+[1.063s] writing ../../build/napoleon/napoleon.egg-info/PKG-INFO
+[1.063s] writing dependency_links to ../../build/napoleon/napoleon.egg-info/dependency_links.txt
+[1.064s] writing entry points to ../../build/napoleon/napoleon.egg-info/entry_points.txt
+[1.064s] writing requirements to ../../build/napoleon/napoleon.egg-info/requires.txt
+[1.064s] writing top-level names to ../../build/napoleon/napoleon.egg-info/top_level.txt
+[1.064s] writing manifest file '../../build/napoleon/napoleon.egg-info/SOURCES.txt'
+[1.097s] reading manifest file '../../build/napoleon/napoleon.egg-info/SOURCES.txt'
+[1.098s] adding license file 'LICENSE'
+[1.098s] writing manifest file '../../build/napoleon/napoleon.egg-info/SOURCES.txt'
+[1.098s] running build
+[1.098s] running build_py
+[1.099s] creating /workspace/build/napoleon/build
+[1.099s] creating /workspace/build/napoleon/build/lib
+[1.099s] creating /workspace/build/napoleon/build/lib/napoleon
+[1.099s] copying napoleon/__init__.py -> /workspace/build/napoleon/build/lib/napoleon
+[1.100s] copying napoleon/state_machine.py -> /workspace/build/napoleon/build/lib/napoleon
+[1.100s] running install
+[1.105s] running install_lib
+[1.123s] creating /workspace/install/napoleon/lib/python3.12/site-packages/napoleon
+[1.123s] copying /workspace/build/napoleon/build/lib/napoleon/__init__.py -> /workspace/install/napoleon/lib/python3.12/site-packages/napoleon
+[1.123s] copying /workspace/build/napoleon/build/lib/napoleon/state_machine.py -> /workspace/install/napoleon/lib/python3.12/site-packages/napoleon
+[1.124s] byte-compiling /workspace/install/napoleon/lib/python3.12/site-packages/napoleon/__init__.py to __init__.cpython-312.pyc
+[1.124s] byte-compiling /workspace/install/napoleon/lib/python3.12/site-packages/napoleon/state_machine.py to state_machine.cpython-312.pyc
+[1.125s] running install_data
+[1.125s] creating /workspace/install/napoleon/share/ament_index
+[1.125s] creating /workspace/install/napoleon/share/ament_index/resource_index
+[1.126s] creating /workspace/install/napoleon/share/ament_index/resource_index/packages
+[1.126s] copying resource/napoleon -> /workspace/install/napoleon/share/ament_index/resource_index/packages
+[1.126s] copying package.xml -> /workspace/install/napoleon/share/napoleon
+[1.126s] running install_egg_info
+[1.144s] Copying ../../build/napoleon/napoleon.egg-info to /workspace/install/napoleon/lib/python3.12/site-packages/napoleon-0.0.0-py3.12.egg-info
+[1.145s] running install_scripts
+[1.269s] Installing state_machine script to /workspace/install/napoleon/lib/napoleon
+[1.269s] writing list of installed files to '/workspace/build/napoleon/install.log'
+[1.303s] Invoked command in '/workspace/src/napoleon' returned '0': PYTHONPATH=/workspace/build/napoleon/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/workspace/install/napoleon/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/napoleon build --build-base /workspace/build/napoleon/build install --record /workspace/build/napoleon/install.log --single-version-externally-managed install_data
