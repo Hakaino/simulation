@@ -1,6 +1,0 @@
-source;share/napoleon/hook/pythonpath.ps1
-source;share/napoleon/hook/pythonpath.dsv
-source;share/napoleon/hook/pythonpath.sh
-source;share/napoleon/hook/ament_prefix_path.ps1
-source;share/napoleon/hook/ament_prefix_path.dsv
-source;share/napoleon/hook/ament_prefix_path.sh
