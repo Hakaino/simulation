@@ -1,37 +1,50 @@
 <?xml version="1.0" ?>
 <sdf version="1.7">
-  <world name="simple_world">
-    <!-- Include the ground plane and sun -->
+  <world name="quadcopter_world">
     <include>
-      <uri>model://ground_plane</uri>
-    </include>
-    <include>
-      <uri>model://sun</uri>
+      <uri>model://fortress</uri>
+      <name>fortress</name>
+      <pose>1 0 0 0 0 0</pose>
     </include>
 
-    <!-- A simple box model at the origin -->
-    <model name="box">
+
+    <!--include>
+      <uri>fuel://openrobotics/models/sun?version=1</uri>
+      <name>sun</name>
+    </include-->
+
+    <!--include>
+      <uri>
+        fuel://openrobotics/models/iris_with_standoffs_and_camera_liftdrag_arducopter_plugins?version=3
+      </uri>
+      <name>iris</name>
+      <pose>0 0 1 0 0 0</pose>
+    </include-->
+
+
+    <!-- Your simple box -->
+    <!--model name="box">
       <pose>0 0 0.5 0 0 0</pose>
       <link name="link">
         <pose>0 0 0 0 0 0</pose>
         <collision name="collision">
-          <geometry>
-            <box>
-              <size>1 1 1</size>
-            </box>
-          </geometry>
+          <geometry><box><size>1 1 1</size></box></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <box>
-              <size>1 1 1</size>
-            </box>
-          </geometry>
+          <geometry><box><size>1 1 1</size></box></geometry>
         </visual>
       </link>
     </model>
 
-    <!-- Camera for a fixed view -->
+    <Iris quadrotor (direct HTTPS to model.sdf) -->
+    <!--include>
+      <uri>
+        https://fuel.gazebosim.org/1.0/openrobotics/models/iris_with_standoffs_and_camera_liftdrag_arducopter_plugins/3/model.sdf
+      </uri>
+      <name>iris</name>
+      <pose>0 0 1 0 0 0</pose>
+    </include-->
+
     <scene>
       <ambient>0.4 0.4 0.4 1</ambient>
       <background>0.7 0.7 0.7 1</background>

@@ -25,7 +25,7 @@ def generate_launch_description():
     # Declare the 'world' launch argument
     declared_world = DeclareLaunchArgument(
         'world',
-        default_value=TextSubstitution(text=os.path.join(pkg_napoleon, 'worlds', 'quadcopter_world.sdf')),
+        default_value=TextSubstitution(text=os.path.join(pkg_napoleon, 'worlds', 'ground.world')),
         description='Path to the SDF world file'
     )
 

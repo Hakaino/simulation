@@ -8,6 +8,11 @@ services:
     tty: true
     environment:
       - DISPLAY=${DISPLAY}
+      - XDG_RUNTIME_DIR=/tmp/runtime-${UID}
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
     volumes:
       - type: bind
         source: /home/rambo/Projects/Drones
