@@ -3,7 +3,7 @@ from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'napoleon'
-
+here = os.path.abspath(os.path.dirname(__file__))
 # helper to collect all files under a directory
 def collect_files(root_dir):
     paths = []
@@ -23,9 +23,7 @@ setup(
          (os.path.join('share', package_name, 'launch'),
           glob('launch/*_launch.py')),
          (os.path.join('share', package_name, 'worlds'),
-          glob('worlds/*.sdf') + glob('worlds/*.world')),
-         (os.path.join('share', package_name, 'models'),
-          collect_files('models'))
+          glob('worlds/*.sdf') + glob('worlds/*.world'))
      ],
 
      install_requires=['setuptools'],

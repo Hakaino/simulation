@@ -6,3 +6,4 @@ RUN apt-get update && apt-get install -y \
       libegl1-mesa \
       mesa-utils \
     && rm -rf /var/lib/apt/lists/*
+CMD [ "export GZ_SIM_RESOURCE_PATH=/workspace/gazebo_models/" ]
