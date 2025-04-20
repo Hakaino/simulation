@@ -18,37 +18,46 @@
       <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Ground Plane</uri>
 
     -->
+    <!--Ground-->
+      <include>
+        <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
+        <name>mud_1</name>
+        <pose>-4 -5 0 0 0 0</pose>
+      </include>
 
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
-      <name>ground_plane_1</name>
-      <pose>0 0 0 0 0 0</pose>
-    </include>
+      <include>
+        <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
+        <name>mud_2</name>
+        <pose>-4 5 0 0 0 0</pose>
+      </include>
 
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
-      <name>ground_plane_2</name>
-      <pose>0 10 0 0 0 0</pose>
-    </include>
+      <include>
+        <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
+        <name>mud_3</name>
+        <pose>4 -5 0 0 0 0</pose>
+      </include>
 
-    <!--include>
-      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
-      <name>ground_plane_3</name>
-      <pose>-10 0 0 0 0 0</pose>
-    </include>
+      <include>
+        <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
+        <name>mud_4</name>
+        <pose>4 5 0 0 0 0</pose>
+      </include>
 
-    <include>
-      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Mud Box</uri>
-      <name>ground_plane_4</name>
-      <pose>0 0 0 0 0 0</pose>
-    </include-->
+    
+    <!--props-->
+      <!--include>
+        <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/School</uri>
+        <name>School</name>
+        <pose>10 0 0 0 0 -1.570796327</pose>
+      </include-->
     
 
-    <!--include>
-      <uri>model://iris</uri>
-      <name>iris</name>
-      <pose>0 0 1 0 0 0</pose>
-    </include-->
+    <!--Vehicle-->
+      <include>
+        <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Parrot Bebop 2</uri>
+        <name>Parrot</name>
+        <pose>0 0 0 0 0 0</pose>
+      </include>
 
     <!-- ROS 2 / Ignition Gazebo integration plugins >
     <plugin name="gazebo_ros_init"    filename="libgazebo_ros_init.so"/>
