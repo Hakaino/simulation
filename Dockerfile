@@ -1,9 +1,12 @@
 FROM osrf/ros:jazzy-desktop-full
-LABEL description="Dockerfile for ROS 2 Humble on Ubuntu 22.04"
+LABEL description="Dockerfile for ROS 2 Jazzy on Ubuntu 24.04"
+WORKDIR /workspace
 RUN apt-get update && apt-get install -y \
-      libgl1-mesa-dri \
-      libgl1-mesa-glx \
-      libegl1-mesa \
-      mesa-utils \
-    && rm -rf /var/lib/apt/lists/*
-CMD [ "export GZ_SIM_RESOURCE_PATH=/workspace/gazebo_models/" ]
+  libegl1 \
+  libgl1 \
+  libgl1-mesa-dri \
+  mesa-utils \
+  && rm -rf /var/lib/apt/lists/*
+
+# Set environment variable correctly inside container
+ENV GZ_SIM_RESOURCE_PATH=/workspace/gazebo_models/
