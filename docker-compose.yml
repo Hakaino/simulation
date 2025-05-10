@@ -1,16 +1,19 @@
-version: '3.4'
 services:
   development:
     container_name: drones_dev
     build:
       context: .
+    runtime: nvidia  # 👈 Explicitly use the NVIDIA runtime
     stdin_open: true
     tty: true
     environment:
       - DISPLAY=${DISPLAY}
-      - XDG_RUNTIME_DIR=/tmp/runtime-${UID}
+      - XDG_RUNTIME_DIR=/tmp/runtime-1000
+      - NVIDIA_VISIBLE_DEVICES=all        # 👈 Allow access to all GPUs
+      - NVIDIA_DRIVER_CAPABILITIES=all    # 👈 Enable graphics, compute, etc.
     devices:
       - /dev/dri:/dev/dri
+      - /dev/kfd:/dev/kfd
     group_add:
       - video
     volumes:

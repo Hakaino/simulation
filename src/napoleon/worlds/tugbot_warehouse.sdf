@@ -79,65 +79,64 @@
       </plugin>
 
       <plugin filename="TransformControl" name="Transform control">
-          <ignition-gui>
-              <property type="bool" key="showTitleBar">false</property>
-              <property key="x" type="double">0</property>
-              <property key="y" type="double">0</property>
-              <property key="width" type="double">250</property>
-              <property key="height" type="double">50</property>
-              <property key="state" type="string">floating</property>
-              <property key="cardBackground" type="string">#666666</property>
-          </ignition-gui>
+        <ignition-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property key="x" type="double">0</property>
+          <property key="y" type="double">0</property>
+          <property key="width" type="double">250</property>
+          <property key="height" type="double">50</property>
+          <property key="state" type="string">floating</property>
+          <property key="cardBackground" type="string">#666666</property>
+        </ignition-gui>
       </plugin>
       <plugin filename="Shapes" name="Shapes">
-          <ignition-gui>
-              <property type="bool" key="showTitleBar">false</property>
-              <property key="x" type="double">250</property>
-              <property key="y" type="double">0</property>
-              <property key="width" type="double">150</property>
-              <property key="height" type="double">50</property>
-              <property key="state" type="string">floating</property>
-              <property key="cardBackground" type="string">#666666</property>
-          </ignition-gui>
+        <ignition-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property key="x" type="double">250</property>
+          <property key="y" type="double">0</property>
+          <property key="width" type="double">150</property>
+          <property key="height" type="double">50</property>
+          <property key="state" type="string">floating</property>
+          <property key="cardBackground" type="string">#666666</property>
+        </ignition-gui>
       </plugin>
       <plugin filename="Screenshot" name="Screenshot">
-          <ignition-gui>
-              <property type="bool" key="showTitleBar">false</property>
-              <property key="x" type="double">400</property>
-              <property key="y" type="double">0</property>
-              <property key="width" type="double">50</property>
-              <property key="height" type="double">50</property>
-              <property key="state" type="string">floating</property>
-              <property key="cardBackground" type="string">#666666</property>
-          </ignition-gui>
+        <ignition-gui>
+          <property type="bool" key="showTitleBar">false</property>
+          <property key="x" type="double">400</property>
+          <property key="y" type="double">0</property>
+          <property key="width" type="double">50</property>
+          <property key="height" type="double">50</property>
+          <property key="state" type="string">floating</property>
+          <property key="cardBackground" type="string">#666666</property>
+        </ignition-gui>
       </plugin>
       <plugin filename="ComponentInspector" name="Component inspector">
-          <ignition-gui>
-              <property key="x" type="double">0</property>
-              <property key="y" type="double">0</property>
-              <property key="width" type="double">400</property>
-              <property key="height" type="double">375</property>
-              <property key="state" type="string">docked_collapsed</property>
-          </ignition-gui>
+        <ignition-gui>
+          <property key="x" type="double">0</property>
+          <property key="y" type="double">0</property>
+          <property key="width" type="double">400</property>
+          <property key="height" type="double">375</property>
+          <property key="state" type="string">docked_collapsed</property>
+        </ignition-gui>
       </plugin>
       <plugin filename="EntityTree" name="Entity tree">
-          <ignition-gui>
-              <property key="x" type="double">0</property>
-              <property key="y" type="double">0</property>
-              <property key="width" type="double">400</property>
-              <property key="height" type="double">375</property>
-              <property key="state" type="string">docked_collapsed</property>
-          </ignition-gui>
+        <ignition-gui>
+          <property key="x" type="double">0</property>
+          <property key="y" type="double">0</property>
+          <property key="width" type="double">400</property>
+          <property key="height" type="double">375</property>
+          <property key="state" type="string">docked_collapsed</property>
+        </ignition-gui>
       </plugin>
-      <plugin filename="Teleop" name="Teleop">
-          <ignition-gui>
-              <property key="x" type="double">0</property>
-              <property key="y" type="double">0</property>
-              <property key="width" type="double">400</property>
-              <property key="height" type="double">900</property>
-              <property key="state" type="string">docked</property>
-          </ignition-gui>
-          <topic>/model/tugbot/cmd_vel</topic>
+      <plugin
+        name="gz::sim::systems::MulticopterVelocityControl"
+        filename="gz-sim-multicopter-velocity-control-system">
+        <robotNamespace>X3</robotNamespace>
+        <cmdVelTopic>/model/X3/cmd_vel</cmdVelTopic>
+        <enableSubTopic>/model/X3/cmd_vel_enable</enableSubTopic>
+        <twistPubTopic>/model/X3/twist</twistPubTopic>
+        <wrenchPubTopic>/model/X3/wrench</wrenchPubTopic>
       </plugin>
     </gui>
 
@@ -180,7 +179,7 @@
       <pose>0 0 -0.09 0 0 0</pose>
     </include>
 
-    <!-- Tugbot -->
+    <!-- Tugbot >
 
     <include>
       <uri>
@@ -196,6 +195,11 @@
       </uri>
       <name>tugbot</name>
       <pose>13.9 -10.6 0.1 0 0 0</pose>
+    </include-->
+
+    <include>
+      <uri>model://X4</uri>
+      <pose>13.9 -10.6 0.1 0 0 0</pose>
     </include>
 
     <!-- Carts -->
@@ -208,7 +212,7 @@
       <pose>-5.73 15 0.25 0 -0 0</pose>
     </include>
 
-    <!-- Objects -->
+    <!-- Objects >
     <include>
       <uri>
         https://fuel.ignitionrobotics.org/1.0/MovAi/models/shelf_big
@@ -364,6 +368,6 @@
       <name>pallet_box_0</name>
       <pose>14.0222 -24.335 0.01 0 -0 0</pose>
       <static>true</static>
-    </include>
+    </include-->
   </world>
 </sdf>
