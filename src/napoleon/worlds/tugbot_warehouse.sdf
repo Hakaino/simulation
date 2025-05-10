@@ -129,15 +129,16 @@
           <property key="state" type="string">docked_collapsed</property>
         </ignition-gui>
       </plugin>
-      <plugin
-        name="gz::sim::systems::MulticopterVelocityControl"
-        filename="gz-sim-multicopter-velocity-control-system">
-        <robotNamespace>X3</robotNamespace>
-        <cmdVelTopic>/model/X3/cmd_vel</cmdVelTopic>
-        <enableSubTopic>/model/X3/cmd_vel_enable</enableSubTopic>
-        <twistPubTopic>/model/X3/twist</twistPubTopic>
-        <wrenchPubTopic>/model/X3/wrench</wrenchPubTopic>
-      </plugin>
+      <!--plugin filename="Teleop" name="Teleop">
+        <ignition-gui>
+          <property key="x" type="double">0</property>
+          <property key="y" type="double">0</property>
+          <property key="width" type="double">400</property>
+          <property key="height" type="double">900</property>
+          <property key="state" type="string">docked</property>
+        </ignition-gui>
+        <topic>/X4/gazebo/command/motor_speed</topic>
+      </plugin-->
     </gui>
 
     <scene>

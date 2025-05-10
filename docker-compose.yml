@@ -3,14 +3,15 @@ services:
     container_name: drones_dev
     build:
       context: .
-    runtime: nvidia  # 👈 Explicitly use the NVIDIA runtime
+    runtime: nvidia
+    privileged: true
     stdin_open: true
     tty: true
     environment:
       - DISPLAY=${DISPLAY}
       - XDG_RUNTIME_DIR=/tmp/runtime-1000
-      - NVIDIA_VISIBLE_DEVICES=all        # 👈 Allow access to all GPUs
-      - NVIDIA_DRIVER_CAPABILITIES=all    # 👈 Enable graphics, compute, etc.
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
     devices:
       - /dev/dri:/dev/dri
       - /dev/kfd:/dev/kfd
@@ -18,11 +19,8 @@ services:
       - video
     volumes:
       - type: bind
-        source: /home/rambo/Projects/Drones
+        source: .
         target: /workspace
-      - type: bind
-        source: /home/rambo/.ssh/
-        target: /root/.ssh/
       - /tmp/.X11-unix:/tmp/.X11-unix
     command: /bin/bash
     network_mode: host
