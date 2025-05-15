@@ -11,23 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout the repo with full history and submodules
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0        # ensure we can pull latest and submodule commits
-          submodules: recursive # clone and initialize submodules in one go
-
-      # 2) (Optional) Re-sync any submodule changes
       - name: Update submodules
         run: git submodule update --init --recursive
-
-      # 3) Pull latest from main (if you still want to force-sync)
-      - name: Pull latest from main
-        run: |
-          git fetch origin main
-          git reset --hard origin/main
-
-      # 4) Build the Docker image
+        
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
