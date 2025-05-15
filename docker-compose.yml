@@ -20,7 +20,7 @@ services:
     volumes:
       - type: bind
         source: .
-        target: /workspace
+        target: /dev_workspace
       - /tmp/.X11-unix:/tmp/.X11-unix
     command: /bin/bash
     network_mode: host
