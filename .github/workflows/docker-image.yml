@@ -10,9 +10,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Update submodules
-        run: git submodule update --init --recursive
-        
+    steps:        
       - name: Build the Docker image
-        run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+        run: docker build .--tag simulation:$(date +%s)
