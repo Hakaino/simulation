@@ -17,4 +17,4 @@ jobs:
         run: ls -R
 
       - name: Build the Docker image
-        run: docker build .--tag simulation:$(date +%s)
+        run: docker build . --tag simulation:$(date +%s)
