@@ -30,3 +30,7 @@ This repository provides a containerized environment to **simulate**, and **run*
 
    ```bash
    docker compose down
+
+## 😎 Contribution
+
+Feel free to contribute to this project. I am doing this for fun, I hope that it can help someone.
