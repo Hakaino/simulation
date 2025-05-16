@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-echo "\n\n Installing apt dependencies........................................."
+echo "\n\n Installing apt dependencies...................................."
     apt-get update
     apt-get install -y \
         wget \
@@ -11,10 +11,13 @@ echo "\n\n Installing apt dependencies........................................."
         mesa-utils \
         python3-kconfiglib
 
-echo "\n\n Installing PX4 Autopilot........................................."
+echo "\n\n update submodules.............................................."
+  git submodule update --init --recursive
+
+echo "\n\n Installing PX4 Autopilot......................................."
   bash /workspace/src/PX4-Autopilot/Tools/setup/ubuntu.sh
 
-echo "\n\n Installing Micro-XRCE-DDS-Agent......................................"
+echo "\n\n Installing Micro-XRCE-DDS-Agent................................"
     mkdir /workspace/src/Micro-XRCE-DDS-Agent/build
     cd /workspace/src/Micro-XRCE-DDS-Agent/build
     cmake ..
@@ -22,5 +25,5 @@ echo "\n\n Installing Micro-XRCE-DDS-Agent......................................
     sudo make install
     ldconfig /usr/local/lib/
 
-echo "\n\n cleanup..........................................................."
+echo "\n\n cleanup........................................................"
   rm -rf /var/lib/apt/lists/*
