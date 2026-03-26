@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-set -e
+set -eo pipefail
 
-. /opt/ros/$ROS_DISTRO/setup.bash
-. /workspace/install/setup.bash
-#Start Server
-MicroXRCEAgent udp4 -p 8888 &
+source /opt/ros/$ROS_DISTRO/setup.bash
+source /workspace/install/setup.bash
 
 if [ $# -ne 0 ]; then
     exec "$@"
-    exit 0
 fi
-echo "\n\n Start simulation........................................."
-    cd /workspace/src/Micro-XRCE-DDS-Agent/
-    make px4_sitl gz_x500 &
-    sleep 5
-    ros2 launch px4_ros_com sensor_combined_listener.launch.py
+
+WORLD="${SIM_WORLD:-warehouse}"
+GUI="${SIM_GUI:-true}"
+DEMO="${SIM_DEMO:-takeoff}"
+
+echo ""
+echo "Starting quadcopter simulation..."
+echo "  world=${WORLD}"
+echo "  gui=${GUI}"
+echo "  demo=${DEMO}"
+
+exec ros2 launch napoleon quad_sim.launch.py "world:=${WORLD}" "gui:=${GUI}" "demo:=${DEMO}"

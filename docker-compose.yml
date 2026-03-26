@@ -1,26 +1,16 @@
 services:
-  development:
-    container_name: drones_dev
+  simulation:
+    container_name: quadcopter_sim
     build:
       context: .
-    runtime: nvidia
-    privileged: true
     stdin_open: true
     tty: true
     environment:
-      - DISPLAY=${DISPLAY}
-      - XDG_RUNTIME_DIR=/tmp/runtime-1000
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-    devices:
-      - /dev/dri:/dev/dri
-      - /dev/kfd:/dev/kfd
-    group_add:
-      - video
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      SIM_WORLD: ${SIM_WORLD:-warehouse}
+      SIM_GUI: ${SIM_GUI:-true}
+      SIM_DEMO: ${SIM_DEMO:-takeoff}
     volumes:
-      - type: bind
-        source: .
-        target: /dev_workspace
       - /tmp/.X11-unix:/tmp/.X11-unix
-    command: /bin/bash
     network_mode: host
