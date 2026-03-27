@@ -89,7 +89,7 @@ def _launch_setup(context, *args, **kwargs):
 
     motor_command_gate = Node(
         package="napoleon",
-        executable="motor_command_gate.py",
+        executable="motor_command_gate",
         output="screen",
         parameters=[
             {"use_sim_time": True},
@@ -103,7 +103,7 @@ def _launch_setup(context, *args, **kwargs):
 
     ground_truth_odometry = Node(
         package="napoleon",
-        executable="ground_truth_odometry.py",
+        executable="ground_truth_odometry",
         output="screen",
         parameters=[
             {"use_sim_time": True},
@@ -208,7 +208,7 @@ def _launch_setup(context, *args, **kwargs):
         launch_actions.append(
             Node(
                 package="napoleon",
-                executable="flight_controller.py",
+                executable="flight_controller",
                 output="screen",
                 parameters=[
                     {"use_sim_time": True},
@@ -230,7 +230,7 @@ def _launch_setup(context, *args, **kwargs):
                 actions=[
                     Node(
                         package="napoleon",
-                        executable="takeoff_demo.py",
+                        executable="takeoff_demo",
                         output="screen",
                         parameters=[
                             {"use_sim_time": True},

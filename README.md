@@ -57,7 +57,7 @@ ros2 launch napoleon quad_sim.launch.py world:=warehouse gui:=true controller:=t
 
 ## Control Interface
 
-The default launch starts `flight_controller.py`, which auto-arms the quadcopter, climbs to the configured hover altitude, and listens on `/cmd_vel`.
+The default launch starts the native C++ `flight_controller` node, which auto-arms the quadcopter, climbs to the configured hover altitude, and listens on `/cmd_vel`.
 
 Command horizontal motion and yaw:
 
