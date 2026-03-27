@@ -1,14 +1,16 @@
 # Quadcopter Simulation
 
-This repository builds a ROS 2 Jazzy + Gazebo Harmonic quadcopter simulation that you control by publishing rotor angular velocities in `rad/s`.
+This repository builds a ROS 2 Jazzy + Gazebo Harmonic quadcopter simulation with a forward camera, IMU, closed-loop flight controller, and raw rotor-speed access for lower-level experimentation.
 
 ## What It Provides
 
 - A local 4-rotor X-configuration quadcopter model
 - A warehouse world and a minimal empty world
+- A forward-facing RGB camera and onboard IMU
 - A rotor command gate with arming, clamping, and command timeout protection
-- Ground-truth odometry and IMU topics for controller development
-- A short open-loop takeoff demo that lifts off and settles back down
+- Ground-truth odometry with `odom -> base_link` TF for navigation stacks
+- A closed-loop hover controller that tracks `/cmd_vel` while holding altitude
+- A short open-loop takeoff demo for raw motor-speed testing
 
 ## Prerequisites
 
@@ -23,7 +25,7 @@ xhost +local:root
 
 ## Quick Start
 
-Build and run the default warehouse scene with the takeoff demo:
+Build and run the default warehouse scene with the closed-loop controller:
 
 ```bash
 docker compose up --build
@@ -35,10 +37,10 @@ Run the same stack headless:
 SIM_GUI=false docker compose up --build
 ```
 
-Start the sim without the demo so you can publish your own motor commands:
+Start the sim without the controller so you can publish your own motor commands:
 
 ```bash
-SIM_DEMO=none docker compose up --build
+SIM_CONTROLLER=false SIM_DEMO=none docker compose up --build
 ```
 
 Open an interactive shell inside the image:
@@ -50,12 +52,35 @@ docker compose run --rm simulation bash
 Inside the container, the main launch entrypoint is:
 
 ```bash
-ros2 launch napoleon quad_sim.launch.py world:=warehouse gui:=true demo:=none
+ros2 launch napoleon quad_sim.launch.py world:=warehouse gui:=true controller:=true demo:=none
 ```
 
 ## Control Interface
 
-Arm the vehicle:
+The default launch starts `flight_controller.py`, which auto-arms the quadcopter, climbs to the configured hover altitude, and listens on `/cmd_vel`.
+
+Command horizontal motion and yaw:
+
+```bash
+ros2 topic pub --rate 20 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5, y: 0.0, z: 0.0}, angular: {z: 0.3}}"
+```
+
+Key runtime topics:
+
+- `/cmd_vel`
+  `geometry_msgs/msg/Twist`
+  planar velocity and yaw-rate command for the closed-loop controller
+- `/odom`
+  `nav_msgs/msg/Odometry`
+  ground-truth odometry in the `odom` frame
+- `/imu/data`
+  `sensor_msgs/msg/Imu`
+- `/camera/image_raw`
+  `sensor_msgs/msg/Image`
+- `/camera/camera_info`
+  `sensor_msgs/msg/CameraInfo`
+
+If you want raw rotor-speed control instead, launch with `controller:=false`, then arm the vehicle:
 
 ```bash
 ros2 service call /quadcopter/arm std_srvs/srv/SetBool "{data: true}"
@@ -74,10 +99,6 @@ Topic contract:
   rotor order: `front_left, front_right, rear_right, rear_left`
 - `/quadcopter/arm`
   `std_srvs/srv/SetBool`
-- `/quadcopter/state/odom`
-  `nav_msgs/msg/Odometry`
-- `/quadcopter/state/imu`
-  `sensor_msgs/msg/Imu`
 
 The motor gate clamps commands above the configured maximum, rejects invalid arrays, and forces all four motors to zero if commands go stale for more than 200 ms or the vehicle is disarmed.
 
@@ -87,11 +108,15 @@ The motor gate clamps commands above the configured maximum, rejects invalid arr
 
 - `world:=warehouse|empty`
 - `gui:=true|false`
+- `controller:=true|false`
+- `takeoff_altitude:=1.5`
 - `demo:=none|takeoff`
 
 ## Notes
 
-- The default Docker workflow uses `SIM_WORLD=warehouse`, `SIM_GUI=true`, and `SIM_DEMO=takeoff`.
-- The built-in `takeoff` demo is intentionally simple: it sends the same rotor speed to all four motors long enough to show lift-off, then ramps back down.
+- The default Docker workflow uses `SIM_WORLD=warehouse`, `SIM_GUI=true`, `SIM_CONTROLLER=true`, and `SIM_DEMO=none`.
+- When `controller:=true`, the controller keeps the drone airborne at `takeoff_altitude` and Nav2 can command it through `/cmd_vel`.
+- The built-in `takeoff` demo is intentionally simple and should only be used with `controller:=false`.
 - The warehouse scene is fully local; it does not download Fuel assets at runtime.
-- The repo does not include PX4 or MAVROS in the default path. The interface is intentionally raw rotor-speed control so you can build your own flight logic on top.
+- The repo does not include PX4 or MAVROS in the default path.
+- Nav2 integration still needs a localization and obstacle-source choice on top of this stack. The drone now exposes the standard flight-control interfaces that Nav2 expects to drive.

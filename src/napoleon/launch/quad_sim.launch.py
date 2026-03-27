@@ -16,6 +16,8 @@ def _launch_setup(context, *args, **kwargs):
     world_choice = LaunchConfiguration("world").perform(context)
     gui_enabled = LaunchConfiguration("gui").perform(context).lower() == "true"
     demo_mode = LaunchConfiguration("demo").perform(context)
+    controller_enabled = LaunchConfiguration("controller").perform(context).lower() == "true"
+    takeoff_altitude = float(LaunchConfiguration("takeoff_altitude").perform(context))
 
     package_share = get_package_share_directory("napoleon")
     model_path = os.path.join(package_share, "models")
@@ -28,6 +30,8 @@ def _launch_setup(context, *args, **kwargs):
     }
     if world_choice not in world_map:
         raise RuntimeError(f"Unsupported world '{world_choice}'. Expected one of: {', '.join(sorted(world_map))}.")
+    if controller_enabled and demo_mode != "none":
+        raise RuntimeError("The closed-loop controller and the takeoff demo both publish rotor commands. Use only one.")
 
     world_name, world_path = world_map[world_choice]
     gz_args = f"-r -v 4 {'-s ' if not gui_enabled else ''}{world_path}"
@@ -36,6 +40,14 @@ def _launch_setup(context, *args, **kwargs):
         f"/world/{world_name}/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock",
         "quadcopter/command/motor_speed@actuator_msgs/msg/Actuators@gz.msgs.Actuators",
         f"/world/{world_name}/model/quadcopter/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu@gz.msgs.IMU",
+        (
+            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/image"
+            "@sensor_msgs/msg/Image@gz.msgs.Image"
+        ),
+        (
+            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/camera_info"
+            "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"
+        ),
         f"/world/{world_name}/dynamic_pose/info@tf2_msgs/msg/TFMessage@gz.msgs.Pose_V",
     ]
 
@@ -60,7 +72,15 @@ def _launch_setup(context, *args, **kwargs):
             ("quadcopter/command/motor_speed", "/quadcopter/internal/actuators"),
             (
                 f"/world/{world_name}/model/quadcopter/link/base_link/sensor/imu_sensor/imu",
-                "/quadcopter/state/imu",
+                "/imu/data",
+            ),
+            (
+                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/image",
+                "/camera/image_raw",
+            ),
+            (
+                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/camera_info",
+                "/camera/camera_info",
             ),
             (f"/world/{world_name}/dynamic_pose/info", "/quadcopter/internal/dynamic_pose"),
         ],
@@ -88,11 +108,81 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[
             {"use_sim_time": True},
             {"pose_topic": "/quadcopter/internal/dynamic_pose"},
-            {"odom_topic": "/quadcopter/state/odom"},
-            {"world_frame": "world"},
+            {"odom_topic": "/odom"},
+            {"world_frame": "odom"},
             {"body_frame": "base_link"},
             {"model_name": "quadcopter"},
             {"link_name": "base_link"},
+            {"publish_tf": True},
+        ],
+    )
+
+    imu_sensor_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "0.0",
+            "--y",
+            "0.0",
+            "--z",
+            "0.0",
+            "--roll",
+            "0.0",
+            "--pitch",
+            "0.0",
+            "--yaw",
+            "0.0",
+            "--frame-id",
+            "base_link",
+            "--child-frame-id",
+            "quadcopter/base_link/imu_sensor",
+        ],
+    )
+
+    front_camera_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "0.12",
+            "--y",
+            "0.0",
+            "--z",
+            "-0.015",
+            "--roll",
+            "0.0",
+            "--pitch",
+            "0.15",
+            "--yaw",
+            "0.0",
+            "--frame-id",
+            "base_link",
+            "--child-frame-id",
+            "quadcopter/base_link/front_camera",
+        ],
+    )
+
+    front_camera_optical_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "0.0",
+            "--y",
+            "0.0",
+            "--z",
+            "0.0",
+            "--roll",
+            "-1.57079632679",
+            "--pitch",
+            "0.0",
+            "--yaw",
+            "-1.57079632679",
+            "--frame-id",
+            "quadcopter/base_link/front_camera",
+            "--child-frame-id",
+            "quadcopter/base_link/front_camera_optical",
         ],
     )
 
@@ -109,7 +199,29 @@ def _launch_setup(context, *args, **kwargs):
         parameter_bridge,
         motor_command_gate,
         ground_truth_odometry,
+        imu_sensor_tf,
+        front_camera_tf,
+        front_camera_optical_tf,
     ]
+
+    if controller_enabled:
+        launch_actions.append(
+            Node(
+                package="napoleon",
+                executable="flight_controller.py",
+                output="screen",
+                parameters=[
+                    {"use_sim_time": True},
+                    {"cmd_vel_topic": "/cmd_vel"},
+                    {"odom_topic": "/odom"},
+                    {"imu_topic": "/imu/data"},
+                    {"motor_command_topic": "/quadcopter/command/motor_speeds"},
+                    {"arm_service": "/quadcopter/arm"},
+                    {"auto_arm": True},
+                    {"takeoff_altitude_m": takeoff_altitude},
+                ],
+            )
+        )
 
     if demo_mode == "takeoff":
         launch_actions.append(
@@ -156,6 +268,16 @@ def generate_launch_description():
                 "demo",
                 default_value="none",
                 description="Optional demo node to run: none or takeoff.",
+            ),
+            DeclareLaunchArgument(
+                "controller",
+                default_value="true",
+                description="Launch the closed-loop flight controller for hover and /cmd_vel tracking.",
+            ),
+            DeclareLaunchArgument(
+                "takeoff_altitude",
+                default_value="1.5",
+                description="Target altitude in meters for the flight controller hover setpoint.",
             ),
             OpaqueFunction(function=_launch_setup),
         ]

@@ -2,9 +2,11 @@
 import math
 from typing import Optional, Tuple
 
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.node import Node
+from tf2_ros import TransformBroadcaster
 from tf2_msgs.msg import TFMessage
 
 
@@ -65,6 +67,7 @@ class GroundTruthOdometry(Node):
         self.declare_parameter("body_frame", "base_link")
         self.declare_parameter("model_name", "quadcopter")
         self.declare_parameter("link_name", "base_link")
+        self.declare_parameter("publish_tf", True)
 
         pose_topic = self.get_parameter("pose_topic").get_parameter_value().string_value
         odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
@@ -72,6 +75,7 @@ class GroundTruthOdometry(Node):
         self.body_frame = self.get_parameter("body_frame").get_parameter_value().string_value
         self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
         self.link_name = self.get_parameter("link_name").get_parameter_value().string_value
+        self.publish_tf = self.get_parameter("publish_tf").get_parameter_value().bool_value
 
         self.previous_time: Optional[float] = None
         self.previous_position: Optional[Tuple[float, float, float]] = None
@@ -79,6 +83,7 @@ class GroundTruthOdometry(Node):
 
         self.pose_subscriber = self.create_subscription(TFMessage, pose_topic, self.pose_callback, 50)
         self.odom_publisher = self.create_publisher(Odometry, odom_topic, 50)
+        self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
 
     def select_transform(self, message: TFMessage):
         for transform in message.transforms:
@@ -168,13 +173,39 @@ class GroundTruthOdometry(Node):
         odom.pose.pose.orientation.y = orientation[1]
         odom.pose.pose.orientation.z = orientation[2]
         odom.pose.pose.orientation.w = orientation[3]
+        odom.pose.covariance[0] = 0.02
+        odom.pose.covariance[7] = 0.02
+        odom.pose.covariance[14] = 0.04
+        odom.pose.covariance[21] = 0.01
+        odom.pose.covariance[28] = 0.01
+        odom.pose.covariance[35] = 0.02
         odom.twist.twist.linear.x = linear_velocity[0]
         odom.twist.twist.linear.y = linear_velocity[1]
         odom.twist.twist.linear.z = linear_velocity[2]
         odom.twist.twist.angular.x = angular_velocity[0]
         odom.twist.twist.angular.y = angular_velocity[1]
         odom.twist.twist.angular.z = angular_velocity[2]
+        odom.twist.covariance[0] = 0.05
+        odom.twist.covariance[7] = 0.05
+        odom.twist.covariance[14] = 0.08
+        odom.twist.covariance[21] = 0.02
+        odom.twist.covariance[28] = 0.02
+        odom.twist.covariance[35] = 0.04
         self.odom_publisher.publish(odom)
+
+        if self.tf_broadcaster is not None:
+            transform = TransformStamped()
+            transform.header.stamp = stamp
+            transform.header.frame_id = self.world_frame
+            transform.child_frame_id = self.body_frame
+            transform.transform.translation.x = position[0]
+            transform.transform.translation.y = position[1]
+            transform.transform.translation.z = position[2]
+            transform.transform.rotation.x = orientation[0]
+            transform.transform.rotation.y = orientation[1]
+            transform.transform.rotation.z = orientation[2]
+            transform.transform.rotation.w = orientation[3]
+            self.tf_broadcaster.sendTransform(transform)
 
         self.previous_time = timestamp
         self.previous_position = position

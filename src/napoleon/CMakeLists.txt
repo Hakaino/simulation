@@ -16,6 +16,7 @@ install(
 
 install(
   PROGRAMS
+    scripts/flight_controller.py
     scripts/ground_truth_odometry.py
     scripts/motor_command_gate.py
     scripts/takeoff_demo.py
