@@ -18,6 +18,7 @@
       <render_engine>ogre2</render_engine>
     </plugin>
     <plugin filename="gz-sim8-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim8-air-pressure-system" name="gz::sim::systems::AirPressure"/>
 
     <scene>
       <ambient>0.65 0.65 0.7 1</ambient>
@@ -178,6 +179,102 @@
           <material>
             <ambient>0.12 0.2 0.12 1</ambient>
             <diffuse>0.15 0.3 0.15 1</diffuse>
+          </material>
+        </visual>
+        <visual name="center_cross_long">
+          <pose>0 0 0.011 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>2.2 0.2 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.96 0.96 0.96 1</ambient>
+            <diffuse>0.99 0.99 0.99 1</diffuse>
+          </material>
+        </visual>
+        <visual name="center_cross_wide">
+          <pose>0 0 0.011 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.2 2.2 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.96 0.96 0.96 1</ambient>
+            <diffuse>0.99 0.99 0.99 1</diffuse>
+          </material>
+        </visual>
+        <visual name="center_marker">
+          <pose>0 0 0.012 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.35 0.35 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.06 0.06 0.06 1</ambient>
+            <diffuse>0.08 0.08 0.08 1</diffuse>
+          </material>
+        </visual>
+        <visual name="north_marker">
+          <pose>0 1.1 0.012 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.8 0.24 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.95 0.55 0.12 1</ambient>
+            <diffuse>0.98 0.62 0.15 1</diffuse>
+          </material>
+        </visual>
+        <visual name="southwest_marker">
+          <pose>-0.95 -0.95 0.012 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.35 0.35 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.06 0.06 0.06 1</ambient>
+            <diffuse>0.08 0.08 0.08 1</diffuse>
+          </material>
+        </visual>
+        <visual name="southeast_marker">
+          <pose>0.95 -0.95 0.012 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.35 0.35 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.96 0.96 0.96 1</ambient>
+            <diffuse>0.99 0.99 0.99 1</diffuse>
+          </material>
+        </visual>
+        <visual name="northwest_marker">
+          <pose>-0.95 0.95 0.012 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.35 0.35 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.96 0.96 0.96 1</ambient>
+            <diffuse>0.99 0.99 0.99 1</diffuse>
+          </material>
+        </visual>
+        <visual name="northeast_marker">
+          <pose>0.95 0.95 0.012 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.35 0.35 0.002</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.06 0.06 0.06 1</ambient>
+            <diffuse>0.08 0.08 0.08 1</diffuse>
           </material>
         </visual>
       </link>

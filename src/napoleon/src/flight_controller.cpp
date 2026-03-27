@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -24,6 +23,16 @@ constexpr double kPi = 3.14159265358979323846;
 
 double clamp(double value, double lower, double upper) {
   return std::clamp(value, lower, upper);
+}
+
+double wrapAngle(double angle) {
+  while (angle > kPi) {
+    angle -= 2.0 * kPi;
+  }
+  while (angle < -kPi) {
+    angle += 2.0 * kPi;
+  }
+  return angle;
 }
 
 Vector3 rotateVectorByQuat(const Vector3 & vector, const Quaternion & quat) {
@@ -55,13 +64,24 @@ Vector3 quatToEuler(const Quaternion & quat) {
   return {roll, pitch, yaw};
 }
 
+Quaternion quatNormalize(const Quaternion & quat) {
+  const auto norm = std::sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] +
+                              quat[3] * quat[3]);
+  if (norm <= 1e-9) {
+    return {0.0, 0.0, 0.0, 1.0};
+  }
+
+  return {quat[0] / norm, quat[1] / norm, quat[2] / norm, quat[3] / norm};
+}
+
 } // namespace
 
 class FlightController : public rclcpp::Node {
 public:
   FlightController() : Node("flight_controller") {
     const auto cmd_vel_topic = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
-    const auto odom_topic = declare_parameter<std::string>("odom_topic", "/odom");
+    const auto odom_topic =
+        declare_parameter<std::string>("odom_topic", "/quadcopter/state/odom");
     const auto imu_topic = declare_parameter<std::string>("imu_topic", "/imu/data");
     const auto motor_command_topic =
         declare_parameter<std::string>("motor_command_topic",
@@ -84,14 +104,29 @@ public:
     motor_constant_ = declare_parameter<double>("motor_constant", 8.54858e-06);
     moment_constant_ = declare_parameter<double>("moment_constant", 0.016);
     max_motor_speed_ = declare_parameter<double>("max_motor_speed_rad_s", 900.0);
+    max_lateral_acceleration_ = declare_parameter<double>("max_lateral_accel_mps2", 2.5);
+    max_vertical_acceleration_ = declare_parameter<double>("max_vertical_accel_mps2", 4.0);
     altitude_kp_ = declare_parameter<double>("altitude_kp", 3.8);
     altitude_ki_ = declare_parameter<double>("altitude_ki", 0.8);
     altitude_kd_ = declare_parameter<double>("altitude_kd", 2.4);
-    velocity_to_pitch_gain_ = declare_parameter<double>("velocity_to_pitch_gain", 0.22);
-    velocity_to_roll_gain_ = declare_parameter<double>("velocity_to_roll_gain", 0.22);
-    attitude_kp_ = declare_parameter<double>("attitude_kp", 7.5);
-    attitude_kd_ = declare_parameter<double>("attitude_kd", 2.8);
-    yaw_rate_kp_ = declare_parameter<double>("yaw_rate_kp", 0.25);
+    velocity_kp_ = declare_parameter<double>("velocity_kp", 1.6);
+    velocity_ki_ = declare_parameter<double>("velocity_ki", 0.25);
+    attitude_kp_ = declare_parameter<double>("attitude_kp", 3.4);
+    yaw_attitude_kp_ = declare_parameter<double>("yaw_attitude_kp", 2.0);
+    rate_kp_ = declare_parameter<double>("rate_kp", 2.2);
+    rate_ki_ = declare_parameter<double>("rate_ki", 0.10);
+    yaw_rate_kp_ = declare_parameter<double>("yaw_rate_kp", 0.45);
+    yaw_rate_ki_ = declare_parameter<double>("yaw_rate_ki", 0.04);
+    max_body_rate_ = declare_parameter<double>("max_body_rate_rad_s", 2.6);
+    max_yaw_body_rate_ = declare_parameter<double>("max_yaw_body_rate_rad_s", 1.6);
+    max_roll_pitch_torque_ =
+        declare_parameter<double>("max_roll_pitch_torque_nm", 0.9);
+    max_yaw_torque_ = declare_parameter<double>("max_yaw_torque_nm", 0.18);
+    altitude_integral_limit_ =
+        declare_parameter<double>("altitude_integral_limit", 1.5);
+    velocity_integral_limit_ =
+        declare_parameter<double>("velocity_integral_limit", 1.0);
+    rate_integral_limit_ = declare_parameter<double>("rate_integral_limit", 0.5);
 
     command_timeout_ = rclcpp::Duration::from_seconds(timeout_sec);
 
@@ -135,16 +170,21 @@ private:
 
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr message) {
     current_altitude_ = message->pose.pose.position.z;
-    orientation_ = Quaternion{message->pose.pose.orientation.x, message->pose.pose.orientation.y,
-                              message->pose.pose.orientation.z, message->pose.pose.orientation.w};
+    odom_orientation_ = quatNormalize(
+        Quaternion{message->pose.pose.orientation.x, message->pose.pose.orientation.y,
+                   message->pose.pose.orientation.z, message->pose.pose.orientation.w});
     body_velocity_ = Vector3{message->twist.twist.linear.x, message->twist.twist.linear.y,
                              message->twist.twist.linear.z};
 
-    const auto world_velocity = rotateVectorByQuat(body_velocity_, *orientation_);
+    const auto world_velocity = rotateVectorByQuat(body_velocity_, *odom_orientation_);
     world_vertical_velocity_ = world_velocity[2];
 
     if (!target_altitude_.has_value()) {
       target_altitude_ = std::max(*current_altitude_, takeoff_altitude_);
+    }
+
+    if (!target_yaw_.has_value()) {
+      target_yaw_ = quatToEuler(*odom_orientation_)[2];
     }
   }
 
@@ -202,7 +242,7 @@ private:
   }
 
   void controlLoop() {
-    if (!orientation_.has_value() || !current_altitude_.has_value() ||
+    if (!odom_orientation_.has_value() || !current_altitude_.has_value() ||
         !target_altitude_.has_value()) {
       return;
     }
@@ -215,11 +255,18 @@ private:
     last_control_time_ = now_time;
     has_last_control_time_ = true;
 
+    const auto orientation = *odom_orientation_;
+    const auto euler = quatToEuler(orientation);
+    if (!target_yaw_.has_value()) {
+      target_yaw_ = euler[2];
+    }
+
+    const auto commands_stale = commandIsStale();
     double commanded_velocity_x = 0.0;
     double commanded_velocity_y = 0.0;
     double commanded_velocity_z = 0.0;
     double commanded_yaw_rate = 0.0;
-    if (!commandIsStale()) {
+    if (!commands_stale) {
       commanded_velocity_x = commanded_velocity_x_;
       commanded_velocity_y = commanded_velocity_y_;
       commanded_velocity_z = commanded_velocity_z_;
@@ -227,42 +274,84 @@ private:
     }
 
     target_altitude_ = clamp(*target_altitude_ + commanded_velocity_z * dt, 0.3, max_altitude_);
+    if (!commands_stale) {
+      target_yaw_ = wrapAngle(*target_yaw_ + commanded_yaw_rate * dt);
+    } else {
+      commanded_yaw_rate = 0.0;
+    }
 
-    const auto euler = quatToEuler(*orientation_);
     const auto body_z_axis_in_world =
-        rotateVectorByQuat(Vector3{0.0, 0.0, 1.0}, *orientation_);
+        rotateVectorByQuat(Vector3{0.0, 0.0, 1.0}, orientation);
 
     const auto altitude_error = *target_altitude_ - *current_altitude_;
-    altitude_integral_ = clamp(altitude_integral_ + altitude_error * dt, -1.5, 1.5);
+    altitude_integral_ = clamp(altitude_integral_ + altitude_error * dt,
+                               -altitude_integral_limit_, altitude_integral_limit_);
     auto desired_vertical_acceleration =
         altitude_kp_ * altitude_error + altitude_ki_ * altitude_integral_ -
         altitude_kd_ * world_vertical_velocity_;
-    desired_vertical_acceleration = clamp(desired_vertical_acceleration, -4.0, 4.0);
+    desired_vertical_acceleration =
+        clamp(desired_vertical_acceleration, -max_vertical_acceleration_,
+              max_vertical_acceleration_);
 
     auto thrust = mass_ * (gravity_ + desired_vertical_acceleration);
     thrust /= std::max(body_z_axis_in_world[2], 0.35);
-    thrust = std::max(0.0, thrust);
+    thrust = clamp(thrust, 0.0, 4.0 * motor_constant_ * max_motor_speed_ * max_motor_speed_);
+
+    const auto velocity_error_x = commanded_velocity_x - body_velocity_[0];
+    const auto velocity_error_y = commanded_velocity_y - body_velocity_[1];
+    velocity_integral_[0] = clamp(velocity_integral_[0] + velocity_error_x * dt,
+                                  -velocity_integral_limit_, velocity_integral_limit_);
+    velocity_integral_[1] = clamp(velocity_integral_[1] + velocity_error_y * dt,
+                                  -velocity_integral_limit_, velocity_integral_limit_);
+
+    const auto desired_acceleration_x =
+        clamp(velocity_kp_ * velocity_error_x + velocity_ki_ * velocity_integral_[0],
+              -max_lateral_acceleration_, max_lateral_acceleration_);
+    const auto desired_acceleration_y =
+        clamp(velocity_kp_ * velocity_error_y + velocity_ki_ * velocity_integral_[1],
+              -max_lateral_acceleration_, max_lateral_acceleration_);
 
     const auto desired_pitch =
-        clamp(velocity_to_pitch_gain_ * (commanded_velocity_x - body_velocity_[0]),
-              -max_tilt_, max_tilt_);
+        clamp(std::atan2(desired_acceleration_x, gravity_), -max_tilt_, max_tilt_);
     const auto desired_roll =
-        clamp(-velocity_to_roll_gain_ * (commanded_velocity_y - body_velocity_[1]),
-              -max_tilt_, max_tilt_);
+        clamp(std::atan2(-desired_acceleration_y, gravity_), -max_tilt_, max_tilt_);
+
+    const auto desired_roll_rate =
+        clamp(attitude_kp_ * wrapAngle(desired_roll - euler[0]),
+              -max_body_rate_, max_body_rate_);
+    const auto desired_pitch_rate =
+        clamp(attitude_kp_ * wrapAngle(desired_pitch - euler[1]),
+              -max_body_rate_, max_body_rate_);
+    const auto desired_yaw_rate =
+        clamp(yaw_attitude_kp_ * wrapAngle(*target_yaw_ - euler[2]) + commanded_yaw_rate,
+              -max_yaw_body_rate_, max_yaw_body_rate_);
+
+    const auto roll_rate_error = desired_roll_rate - angular_velocity_[0];
+    const auto pitch_rate_error = desired_pitch_rate - angular_velocity_[1];
+    const auto yaw_rate_error = desired_yaw_rate - angular_velocity_[2];
+    rate_integral_[0] = clamp(rate_integral_[0] + roll_rate_error * dt,
+                              -rate_integral_limit_, rate_integral_limit_);
+    rate_integral_[1] = clamp(rate_integral_[1] + pitch_rate_error * dt,
+                              -rate_integral_limit_, rate_integral_limit_);
+    rate_integral_[2] = clamp(rate_integral_[2] + yaw_rate_error * dt,
+                              -rate_integral_limit_, rate_integral_limit_);
 
     const auto roll_torque =
-        attitude_kp_ * (desired_roll - euler[0]) - attitude_kd_ * angular_velocity_[0];
+        clamp(rate_kp_ * roll_rate_error + rate_ki_ * rate_integral_[0],
+              -max_roll_pitch_torque_, max_roll_pitch_torque_);
     const auto pitch_torque =
-        attitude_kp_ * (desired_pitch - euler[1]) - attitude_kd_ * angular_velocity_[1];
+        clamp(rate_kp_ * pitch_rate_error + rate_ki_ * rate_integral_[1],
+              -max_roll_pitch_torque_, max_roll_pitch_torque_);
     const auto yaw_torque =
-        yaw_rate_kp_ * (commanded_yaw_rate - angular_velocity_[2]);
+        clamp(yaw_rate_kp_ * yaw_rate_error + yaw_rate_ki_ * rate_integral_[2],
+              -max_yaw_torque_, max_yaw_torque_);
 
     const auto collective = thrust / (4.0 * motor_constant_);
     const auto roll_term = roll_torque / (4.0 * motor_constant_ * arm_length_);
     const auto pitch_term = pitch_torque / (4.0 * motor_constant_ * arm_length_);
     const auto yaw_term = yaw_torque / (4.0 * motor_constant_ * moment_constant_);
 
-    const std::array<double, 4> squared_speeds = {
+    const std::array<double, 4> mixed_squared_speeds = {
         collective + roll_term - pitch_term + yaw_term,
         collective - roll_term - pitch_term - yaw_term,
         collective - roll_term + pitch_term + yaw_term,
@@ -270,10 +359,25 @@ private:
     };
 
     const auto max_squared_speed = max_motor_speed_ * max_motor_speed_;
+    double mixer_scale = 1.0;
+    for (const auto mixed_squared_speed : mixed_squared_speeds) {
+      const auto deviation = mixed_squared_speed - collective;
+      if (deviation > 0.0) {
+        mixer_scale =
+            std::min(mixer_scale, (max_squared_speed - collective) / deviation);
+      } else if (deviation < 0.0) {
+        mixer_scale =
+            std::min(mixer_scale, collective / (-deviation));
+      }
+    }
+
     std::vector<double> motor_speeds;
-    motor_speeds.reserve(squared_speeds.size());
-    for (const auto squared_speed : squared_speeds) {
-      motor_speeds.push_back(std::sqrt(clamp(squared_speed, 0.0, max_squared_speed)));
+    motor_speeds.reserve(mixed_squared_speeds.size());
+    for (const auto mixed_squared_speed : mixed_squared_speeds) {
+      const auto scaled_squared_speed =
+          collective + mixer_scale * (mixed_squared_speed - collective);
+      motor_speeds.push_back(
+          std::sqrt(clamp(scaled_squared_speed, 0.0, max_squared_speed)));
     }
 
     std_msgs::msg::Float64MultiArray message;
@@ -302,14 +406,26 @@ private:
   double motor_constant_{8.54858e-06};
   double moment_constant_{0.016};
   double max_motor_speed_{900.0};
+  double max_lateral_acceleration_{2.5};
+  double max_vertical_acceleration_{4.0};
   double altitude_kp_{3.8};
   double altitude_ki_{0.8};
   double altitude_kd_{2.4};
-  double velocity_to_pitch_gain_{0.22};
-  double velocity_to_roll_gain_{0.22};
-  double attitude_kp_{7.5};
-  double attitude_kd_{2.8};
-  double yaw_rate_kp_{0.25};
+  double velocity_kp_{1.6};
+  double velocity_ki_{0.25};
+  double attitude_kp_{3.4};
+  double yaw_attitude_kp_{2.0};
+  double rate_kp_{2.2};
+  double rate_ki_{0.10};
+  double yaw_rate_kp_{0.45};
+  double yaw_rate_ki_{0.04};
+  double max_body_rate_{2.6};
+  double max_yaw_body_rate_{1.6};
+  double max_roll_pitch_torque_{0.9};
+  double max_yaw_torque_{0.18};
+  double altitude_integral_limit_{1.5};
+  double velocity_integral_limit_{1.0};
+  double rate_integral_limit_{0.5};
 
   rclcpp::Duration command_timeout_{0, 0};
   bool has_last_command_time_{false};
@@ -326,10 +442,13 @@ private:
   double commanded_velocity_z_{0.0};
   double commanded_yaw_rate_{0.0};
   double altitude_integral_{0.0};
+  Vector3 velocity_integral_{0.0, 0.0, 0.0};
+  Vector3 rate_integral_{0.0, 0.0, 0.0};
 
   std::optional<double> target_altitude_;
   std::optional<double> current_altitude_;
-  std::optional<Quaternion> orientation_;
+  std::optional<double> target_yaw_;
+  std::optional<Quaternion> odom_orientation_;
   Vector3 body_velocity_{0.0, 0.0, 0.0};
   double world_vertical_velocity_{0.0};
   Vector3 angular_velocity_{0.0, 0.0, 0.0};

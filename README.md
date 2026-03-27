@@ -1,15 +1,16 @@
 # Quadcopter Simulation
 
-This repository builds a ROS 2 Jazzy + Gazebo Harmonic quadcopter simulation with a forward camera, IMU, closed-loop flight controller, and raw rotor-speed access for lower-level experimentation.
+This repository builds a ROS 2 Jazzy + Gazebo Harmonic quadcopter simulation with forward and downward RGB cameras, IMU and barometer sensing, a lightweight visual-inertial odometry path, a closed-loop flight controller, and raw rotor-speed access for lower-level experimentation.
 
 ## What It Provides
 
 - A local 4-rotor X-configuration quadcopter model
 - A warehouse world and a minimal empty world
-- A forward-facing RGB camera and onboard IMU
+- A forward RGB camera for perception and a downward RGB camera for odometry
+- An onboard IMU and barometer with basic noise models
 - A rotor command gate with arming, clamping, and command timeout protection
-- Ground-truth odometry with `odom -> base_link` TF for navigation stacks
-- A closed-loop hover controller that tracks `/cmd_vel` while holding altitude
+- A lightweight downward-camera optical-flow odometry fused with IMU and barometer
+- A cascaded hover controller that tracks `/cmd_vel` while holding altitude
 - A short open-loop takeoff demo for raw motor-speed testing
 
 ## Prerequisites
@@ -57,7 +58,14 @@ ros2 launch napoleon quad_sim.launch.py world:=warehouse gui:=true controller:=t
 
 ## Control Interface
 
-The default launch starts the native C++ `flight_controller` node, which auto-arms the quadcopter, climbs to the configured hover altitude, and listens on `/cmd_vel`.
+The default launch starts the native C++ `visual_inertial_odometry` and `flight_controller` nodes. The controller auto-arms the quadcopter, climbs to the configured hover altitude, and listens on `/cmd_vel`, while the odometry stack fuses downward-camera motion with the IMU and barometer.
+
+The controller uses a cascaded control stack:
+
+- body-frame velocity PI
+- attitude-to-body-rate conversion
+- body-rate PI
+- rotor mixer
 
 Command horizontal motion and yaw:
 
@@ -72,12 +80,21 @@ Key runtime topics:
   planar velocity and yaw-rate command for the closed-loop controller
 - `/odom`
   `nav_msgs/msg/Odometry`
-  ground-truth odometry in the `odom` frame
+  planar visual-inertial odometry for navigation in the `odom` frame with child frame `base_footprint`
+- `/quadcopter/state/odom`
+  `nav_msgs/msg/Odometry`
+  full 6DoF visual-inertial flight-state odometry used by the controller with child frame `base_link`
 - `/imu/data`
   `sensor_msgs/msg/Imu`
+- `/baro/data`
+  `sensor_msgs/msg/FluidPressure`
 - `/camera/image_raw`
   `sensor_msgs/msg/Image`
 - `/camera/camera_info`
+  `sensor_msgs/msg/CameraInfo`
+- `/odom_camera/image_raw`
+  `sensor_msgs/msg/Image`
+- `/odom_camera/camera_info`
   `sensor_msgs/msg/CameraInfo`
 
 If you want raw rotor-speed control instead, launch with `controller:=false`, then arm the vehicle:
@@ -115,8 +132,11 @@ The motor gate clamps commands above the configured maximum, rejects invalid arr
 ## Notes
 
 - The default Docker workflow uses `SIM_WORLD=warehouse`, `SIM_GUI=true`, `SIM_CONTROLLER=true`, and `SIM_DEMO=none`.
-- When `controller:=true`, the controller keeps the drone airborne at `takeoff_altitude` and Nav2 can command it through `/cmd_vel`.
+- When `controller:=true`, the controller keeps the drone airborne at `takeoff_altitude` and a ROS navigation stack can command it through `/cmd_vel`.
+- For Nav2-style configs, use `odom` as the global/local odom frame and `base_footprint` as `robot_base_frame`. The controller itself consumes `/quadcopter/state/odom`.
+- The `warehouse` world is the recommended default for camera odometry, and both worlds now include a marked landing pad under the spawn point to give the downward camera usable features.
+- The in-repo visual-inertial odometry is intentionally lightweight and should be treated as experimental. If you want a more realistic navigation-grade stack, use a mature VIO package such as OpenVINS, VINS-Fusion, or ORB-SLAM3, and add a downward range sensor or stereo pair.
 - The built-in `takeoff` demo is intentionally simple and should only be used with `controller:=false`.
 - The warehouse scene is fully local; it does not download Fuel assets at runtime.
 - The repo does not include PX4 or MAVROS in the default path.
-- Nav2 integration still needs a localization and obstacle-source choice on top of this stack. The drone now exposes the standard flight-control interfaces that Nav2 expects to drive.
+- Nav2 integration still needs your choice of localization/costmap policy on top of this stack. The drone now exposes a `/cmd_vel` control path and a camera/IMU/baro odometry source that Nav2 can be wired against, but realistic autonomous flight will still benefit from a stronger estimator than the minimal one included here.

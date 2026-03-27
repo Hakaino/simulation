@@ -4,6 +4,7 @@ set -e
 echo "\n\nInstalling apt dependencies...................................."
 apt-get update
 apt-get install -y --no-install-recommends \
+    libopencv-dev \
     libegl1 \
     libgl1 \
     libgl1-mesa-dri \

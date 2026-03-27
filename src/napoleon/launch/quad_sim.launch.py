@@ -41,11 +41,23 @@ def _launch_setup(context, *args, **kwargs):
         "quadcopter/command/motor_speed@actuator_msgs/msg/Actuators@gz.msgs.Actuators",
         f"/world/{world_name}/model/quadcopter/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu@gz.msgs.IMU",
         (
+            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/barometer/air_pressure"
+            "@sensor_msgs/msg/FluidPressure@gz.msgs.FluidPressure"
+        ),
+        (
             f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/image"
             "@sensor_msgs/msg/Image@gz.msgs.Image"
         ),
         (
             f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/camera_info"
+            "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"
+        ),
+        (
+            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/image"
+            "@sensor_msgs/msg/Image@gz.msgs.Image"
+        ),
+        (
+            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/camera_info"
             "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"
         ),
         f"/world/{world_name}/dynamic_pose/info@tf2_msgs/msg/TFMessage@gz.msgs.Pose_V",
@@ -75,12 +87,24 @@ def _launch_setup(context, *args, **kwargs):
                 "/imu/data",
             ),
             (
+                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/barometer/air_pressure",
+                "/baro/data",
+            ),
+            (
                 f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/image",
                 "/camera/image_raw",
             ),
             (
                 f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/camera_info",
                 "/camera/camera_info",
+            ),
+            (
+                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/image",
+                "/odom_camera/image_raw",
+            ),
+            (
+                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/camera_info",
+                "/odom_camera/camera_info",
             ),
             (f"/world/{world_name}/dynamic_pose/info", "/quadcopter/internal/dynamic_pose"),
         ],
@@ -101,6 +125,28 @@ def _launch_setup(context, *args, **kwargs):
         ],
     )
 
+    visual_inertial_odometry = Node(
+        package="napoleon",
+        executable="visual_inertial_odometry",
+        output="screen",
+        parameters=[
+            {"use_sim_time": True},
+            {"image_topic": "/odom_camera/image_raw"},
+            {"camera_info_topic": "/odom_camera/camera_info"},
+            {"imu_topic": "/imu/data"},
+            {"pressure_topic": "/baro/data"},
+            {"full_odom_topic": "/quadcopter/state/odom"},
+            {"projected_odom_topic": "/odom"},
+            {"world_frame": "odom"},
+            {"body_frame": "base_link"},
+            {"projected_body_frame": "base_footprint"},
+            {"publish_tf": True},
+            {"camera_mount_roll_rad": 0.0},
+            {"camera_mount_pitch_rad": 1.57079632679},
+            {"camera_mount_yaw_rad": 0.0},
+        ],
+    )
+
     ground_truth_odometry = Node(
         package="napoleon",
         executable="ground_truth_odometry",
@@ -108,12 +154,14 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[
             {"use_sim_time": True},
             {"pose_topic": "/quadcopter/internal/dynamic_pose"},
-            {"odom_topic": "/odom"},
+            {"full_odom_topic": "/ground_truth/quadcopter/state/odom"},
+            {"projected_odom_topic": "/ground_truth/odom"},
             {"world_frame": "odom"},
             {"body_frame": "base_link"},
+            {"projected_body_frame": "base_footprint"},
             {"model_name": "quadcopter"},
             {"link_name": "base_link"},
-            {"publish_tf": True},
+            {"publish_tf": False},
         ],
     )
 
@@ -186,6 +234,52 @@ def _launch_setup(context, *args, **kwargs):
         ],
     )
 
+    down_camera_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "0.0",
+            "--y",
+            "0.0",
+            "--z",
+            "-0.03",
+            "--roll",
+            "0.0",
+            "--pitch",
+            "1.57079632679",
+            "--yaw",
+            "0.0",
+            "--frame-id",
+            "base_link",
+            "--child-frame-id",
+            "quadcopter/base_link/down_camera",
+        ],
+    )
+
+    down_camera_optical_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=[
+            "--x",
+            "0.0",
+            "--y",
+            "0.0",
+            "--z",
+            "0.0",
+            "--roll",
+            "-1.57079632679",
+            "--pitch",
+            "0.0",
+            "--yaw",
+            "-1.57079632679",
+            "--frame-id",
+            "quadcopter/base_link/down_camera",
+            "--child-frame-id",
+            "quadcopter/base_link/down_camera_optical",
+        ],
+    )
+
     launch_actions = [
         SetEnvironmentVariable(
             "GZ_SIM_RESOURCE_PATH",
@@ -198,10 +292,13 @@ def _launch_setup(context, *args, **kwargs):
         gz_sim,
         parameter_bridge,
         motor_command_gate,
+        visual_inertial_odometry,
         ground_truth_odometry,
         imu_sensor_tf,
         front_camera_tf,
         front_camera_optical_tf,
+        down_camera_tf,
+        down_camera_optical_tf,
     ]
 
     if controller_enabled:
@@ -213,7 +310,7 @@ def _launch_setup(context, *args, **kwargs):
                 parameters=[
                     {"use_sim_time": True},
                     {"cmd_vel_topic": "/cmd_vel"},
-                    {"odom_topic": "/odom"},
+                    {"odom_topic": "/quadcopter/state/odom"},
                     {"imu_topic": "/imu/data"},
                     {"motor_command_topic": "/quadcopter/command/motor_speeds"},
                     {"arm_service": "/quadcopter/arm"},

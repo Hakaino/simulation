@@ -91,13 +91,81 @@
         </material>
       </visual>
 
+      <visual name="down_camera_mount_visual">
+        <pose>0 0 -0.026 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.045 0.045 0.01</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.09 0.09 0.09 1</diffuse>
+        </material>
+      </visual>
+
       <sensor name="imu_sensor" type="imu">
         <always_on>true</always_on>
         <update_rate>250</update_rate>
         <visualize>false</visualize>
         <imu>
-          <enable_orientation>true</enable_orientation>
+          <enable_orientation>false</enable_orientation>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.003</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.003</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.003</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.05</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.05</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>0.05</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
         </imu>
+      </sensor>
+
+      <sensor name="barometer" type="air_pressure">
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <visualize>false</visualize>
+        <air_pressure>
+          <reference_altitude>0.0</reference_altitude>
+          <pressure>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>1.5</stddev>
+            </noise>
+          </pressure>
+        </air_pressure>
       </sensor>
 
       <sensor name="front_camera" type="camera">
@@ -107,6 +175,23 @@
         <visualize>false</visualize>
         <camera name="front_camera">
           <horizontal_fov>1.3962634</horizontal_fov>
+          <lens>
+            <intrinsics>
+              <fx>381.36112213134766</fx>
+              <fy>381.361141204834</fy>
+              <cx>320.0</cx>
+              <cy>240.0</cy>
+              <s>0.0</s>
+            </intrinsics>
+          </lens>
+          <distortion>
+            <k1>0.0</k1>
+            <k2>0.0</k2>
+            <k3>0.0</k3>
+            <p1>0.0</p1>
+            <p2>0.0</p2>
+            <center>0.5 0.5</center>
+          </distortion>
           <image>
             <width>640</width>
             <height>480</height>
@@ -116,6 +201,52 @@
             <near>0.08</near>
             <far>50.0</far>
           </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.006</stddev>
+          </noise>
+        </camera>
+      </sensor>
+
+      <sensor name="down_camera" type="camera">
+        <pose>0 0 -0.03 0 1.57079632679 0</pose>
+        <always_on>true</always_on>
+        <update_rate>45</update_rate>
+        <visualize>false</visualize>
+        <camera name="down_camera">
+          <horizontal_fov>1.22173048</horizontal_fov>
+          <lens>
+            <intrinsics>
+              <fx>415.69219381653056</fx>
+              <fy>415.69219381653056</fy>
+              <cx>320.0</cx>
+              <cy>240.0</cy>
+              <s>0.0</s>
+            </intrinsics>
+          </lens>
+          <distortion>
+            <k1>0.0</k1>
+            <k2>0.0</k2>
+            <k3>0.0</k3>
+            <p1>0.0</p1>
+            <p2>0.0</p2>
+            <center>0.5 0.5</center>
+          </distortion>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>25.0</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.004</stddev>
+          </noise>
         </camera>
       </sensor>
     </link>
