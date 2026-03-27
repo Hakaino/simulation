@@ -25,6 +25,7 @@ def _launch_setup(context, *args, **kwargs):
     existing_model_path = os.environ.get("GAZEBO_MODEL_PATH", "")
 
     world_map = {
+        "outdoor": ("outdoor_world", os.path.join(package_share, "worlds", "outdoor.sdf")),
         "warehouse": ("warehouse_world", os.path.join(package_share, "worlds", "warehouse.sdf")),
         "empty": ("empty_world", os.path.join(package_share, "worlds", "empty.sdf")),
     }
@@ -243,7 +244,7 @@ def _launch_setup(context, *args, **kwargs):
             "--y",
             "0.0",
             "--z",
-            "-0.03",
+            "-0.09",
             "--roll",
             "0.0",
             "--pitch",
@@ -353,8 +354,8 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "world",
-                default_value="warehouse",
-                description="World to load: warehouse or empty.",
+                default_value="outdoor",
+                description="World to load: outdoor, warehouse, or empty.",
             ),
             DeclareLaunchArgument(
                 "gui",

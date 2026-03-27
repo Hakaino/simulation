@@ -332,8 +332,7 @@ private:
     const auto horizontal_decay = std::exp(-horizontal_velocity_damping_hz_ * dt);
     velocity_world_[0] *= horizontal_decay;
     velocity_world_[1] *= horizontal_decay;
-    if (previous_image_time_.has_value() &&
-        (stamp - *previous_image_time_).seconds() > flow_timeout_sec_) {
+    if (!isFlowMeasurementRecent(stamp)) {
       const auto stale_decay = std::exp(-stale_flow_damping_hz_ * dt);
       velocity_world_[0] *= stale_decay;
       velocity_world_[1] *= stale_decay;
@@ -429,6 +428,7 @@ private:
 
     const auto frame_dt = (stamp - *previous_image_time_).seconds();
     if (frame_dt <= 1e-3) {
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
@@ -438,6 +438,7 @@ private:
         *filtered_altitude_ > max_flow_altitude_m_ ||
         std::hypot(euler[0], euler[1]) > max_tilt_for_flow_rad_ ||
         std::abs(velocity_world_[2]) > max_vertical_speed_for_flow_mps_) {
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
@@ -446,6 +447,7 @@ private:
       previous_points_ = detectFeatures(previous_gray_);
     }
     if (static_cast<int>(previous_points_.size()) < min_tracked_features_) {
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
@@ -480,6 +482,7 @@ private:
 
     if (static_cast<int>(current_valid_points.size()) < min_tracked_features_) {
       warnNoFlowYet();
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
@@ -491,12 +494,14 @@ private:
                                     affine_ransac_threshold_px_);
     if (affine_transform.empty() || inlier_mask.empty()) {
       warnNoFlowYet();
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
 
     const auto range_to_ground = opticalRangeToGround();
     if (range_to_ground <= min_flow_altitude_m_) {
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
@@ -566,6 +571,7 @@ private:
     if (inlier_count < min_tracked_features_ / 2 ||
         velocity_x_samples.size() < static_cast<std::size_t>(min_tracked_features_ / 2)) {
       warnNoFlowYet();
+      dropFlowEstimate();
       resetVisualTracking(gray_image, stamp);
       return;
     }
@@ -612,6 +618,8 @@ private:
     }
 
     previous_image_time_ = stamp;
+    last_flow_measurement_time_ = stamp;
+    flow_active_ = true;
     previous_flow_position_world_ = position_world_;
     last_state_time_ = stamp;
     have_previous_frame_ = true;
@@ -623,20 +631,29 @@ private:
       return;
     }
 
-    const auto stamp = toBuiltinTime(last_state_time_.value_or(now()));
+    const auto state_time = last_state_time_.value_or(now());
+    const auto stamp = toBuiltinTime(state_time);
+    const auto lateral_flow_available = isFlowMeasurementRecent(state_time);
     const auto orientation = orientation_world_body_;
-    const auto body_velocity =
-        rotateVectorByQuat(velocity_world_, quatConjugate(orientation));
+    auto body_velocity = rotateVectorByQuat(velocity_world_, quatConjugate(orientation));
+    if (!lateral_flow_available) {
+      body_velocity[0] = 0.0;
+      body_velocity[1] = 0.0;
+    }
     const auto euler = quatToEuler(orientation);
     const auto yaw_orientation = quatFromYaw(euler[2]);
     auto planar_velocity =
         rotateVectorByQuat(velocity_world_, quatConjugate(yaw_orientation));
     planar_velocity[2] = 0.0;
+    if (!lateral_flow_available) {
+      planar_velocity[0] = 0.0;
+      planar_velocity[1] = 0.0;
+    }
 
     publishFullOdometry(stamp, position_world_, orientation, body_velocity,
-                        angular_velocity_body_);
+                        angular_velocity_body_, lateral_flow_available);
     publishProjectedOdometry(stamp, position_world_, euler[2], planar_velocity,
-                             angular_velocity_body_[2]);
+                             angular_velocity_body_[2], lateral_flow_available);
     publishTransforms(stamp, position_world_, orientation, euler[2]);
   }
 
@@ -644,7 +661,8 @@ private:
                            const Vector3 & position,
                            const Quaternion & orientation,
                            const Vector3 & body_velocity,
-                           const Vector3 & angular_velocity) {
+                           const Vector3 & angular_velocity,
+                           bool lateral_flow_available) {
     nav_msgs::msg::Odometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = world_frame_;
@@ -662,7 +680,7 @@ private:
     odom.twist.twist.angular.x = angular_velocity[0];
     odom.twist.twist.angular.y = angular_velocity[1];
     odom.twist.twist.angular.z = angular_velocity[2];
-    fillFullCovariance(odom);
+    fillFullCovariance(odom, lateral_flow_available);
     full_odom_publisher_->publish(odom);
   }
 
@@ -670,7 +688,8 @@ private:
                                 const Vector3 & position,
                                 double yaw,
                                 const Vector3 & planar_velocity,
-                                double yaw_rate) {
+                                double yaw_rate,
+                                bool lateral_flow_available) {
     nav_msgs::msg::Odometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = world_frame_;
@@ -691,7 +710,7 @@ private:
     odom.twist.twist.angular.x = 0.0;
     odom.twist.twist.angular.y = 0.0;
     odom.twist.twist.angular.z = yaw_rate;
-    fillProjectedCovariance(odom);
+    fillProjectedCovariance(odom, lateral_flow_available);
     projected_odom_publisher_->publish(odom);
   }
 
@@ -734,30 +753,32 @@ private:
     tf_broadcaster_->sendTransform(projected_to_body);
   }
 
-  void fillFullCovariance(nav_msgs::msg::Odometry & odom) const {
-    odom.pose.covariance[0] = 0.06;
-    odom.pose.covariance[7] = 0.06;
+  void fillFullCovariance(nav_msgs::msg::Odometry & odom,
+                          bool lateral_flow_available) const {
+    odom.pose.covariance[0] = lateral_flow_available ? 0.06 : 25.0;
+    odom.pose.covariance[7] = lateral_flow_available ? 0.06 : 25.0;
     odom.pose.covariance[14] = 0.10;
     odom.pose.covariance[21] = 0.03;
     odom.pose.covariance[28] = 0.03;
     odom.pose.covariance[35] = 0.10;
-    odom.twist.covariance[0] = 0.12;
-    odom.twist.covariance[7] = 0.12;
+    odom.twist.covariance[0] = lateral_flow_available ? 0.12 : 25.0;
+    odom.twist.covariance[7] = lateral_flow_available ? 0.12 : 25.0;
     odom.twist.covariance[14] = 0.18;
     odom.twist.covariance[21] = 0.04;
     odom.twist.covariance[28] = 0.04;
     odom.twist.covariance[35] = 0.10;
   }
 
-  void fillProjectedCovariance(nav_msgs::msg::Odometry & odom) const {
-    odom.pose.covariance[0] = 0.05;
-    odom.pose.covariance[7] = 0.05;
+  void fillProjectedCovariance(nav_msgs::msg::Odometry & odom,
+                               bool lateral_flow_available) const {
+    odom.pose.covariance[0] = lateral_flow_available ? 0.05 : 25.0;
+    odom.pose.covariance[7] = lateral_flow_available ? 0.05 : 25.0;
     odom.pose.covariance[14] = 9999.0;
     odom.pose.covariance[21] = 9999.0;
     odom.pose.covariance[28] = 9999.0;
     odom.pose.covariance[35] = 0.08;
-    odom.twist.covariance[0] = 0.10;
-    odom.twist.covariance[7] = 0.10;
+    odom.twist.covariance[0] = lateral_flow_available ? 0.10 : 25.0;
+    odom.twist.covariance[7] = lateral_flow_available ? 0.10 : 25.0;
     odom.twist.covariance[14] = 9999.0;
     odom.twist.covariance[21] = 9999.0;
     odom.twist.covariance[28] = 9999.0;
@@ -781,7 +802,7 @@ private:
     RCLCPP_WARN(
         get_logger(),
         "Downward visual odometry does not have enough valid ground texture yet. "
-        "Use the warehouse world or add floor texture for reliable flight odometry.");
+        "Use the outdoor or warehouse world, or add floor texture for reliable flight odometry.");
     have_warned_no_flow_ = true;
   }
 
@@ -807,6 +828,20 @@ private:
     previous_image_time_ = stamp;
     previous_flow_position_world_ = position_world_;
     have_previous_frame_ = true;
+  }
+
+  bool isFlowMeasurementRecent(const rclcpp::Time & reference_time) const {
+    if (!flow_active_ || !last_flow_measurement_time_.has_value()) {
+      return false;
+    }
+
+    return (reference_time - *last_flow_measurement_time_).seconds() <= flow_timeout_sec_;
+  }
+
+  void dropFlowEstimate() {
+    flow_active_ = false;
+    velocity_world_[0] = 0.0;
+    velocity_world_[1] = 0.0;
   }
 
   std::vector<cv::Point2f> detectFeatures(const cv::Mat & gray_image) const {
@@ -919,6 +954,7 @@ private:
   bool camera_info_received_{false};
   bool imu_initialized_{false};
   bool have_previous_frame_{false};
+  bool flow_active_{false};
   bool have_warned_unknown_encoding_{false};
   bool have_warned_no_flow_{false};
 
@@ -931,6 +967,7 @@ private:
   std::vector<cv::Point2f> previous_points_;
 
   std::optional<rclcpp::Time> previous_image_time_;
+  std::optional<rclcpp::Time> last_flow_measurement_time_;
   std::optional<rclcpp::Time> last_imu_time_;
   std::optional<rclcpp::Time> last_state_time_;
   std::optional<rclcpp::Time> previous_baro_time_;

@@ -8,7 +8,7 @@ services:
     environment:
       DISPLAY: ${DISPLAY:-:0}
       QT_X11_NO_MITSHM: "1"
-      SIM_WORLD: ${SIM_WORLD:-warehouse}
+      SIM_WORLD: ${SIM_WORLD:-outdoor}
       SIM_GUI: ${SIM_GUI:-true}
       SIM_CONTROLLER: ${SIM_CONTROLLER:-true}
       SIM_TAKEOFF_ALTITUDE: ${SIM_TAKEOFF_ALTITUDE:-1.5}

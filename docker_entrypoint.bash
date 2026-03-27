@@ -8,7 +8,7 @@ if [ $# -ne 0 ]; then
     exec "$@"
 fi
 
-WORLD="${SIM_WORLD:-warehouse}"
+WORLD="${SIM_WORLD:-outdoor}"
 GUI="${SIM_GUI:-true}"
 CONTROLLER="${SIM_CONTROLLER:-true}"
 TAKEOFF_ALTITUDE="${SIM_TAKEOFF_ALTITUDE:-1.5}"

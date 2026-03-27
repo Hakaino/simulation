@@ -25,6 +25,10 @@ double clamp(double value, double lower, double upper) {
   return std::clamp(value, lower, upper);
 }
 
+double blend(double current, double measurement, double weight) {
+  return (1.0 - weight) * current + weight * measurement;
+}
+
 double wrapAngle(double angle) {
   while (angle > kPi) {
     angle -= 2.0 * kPi;
@@ -45,6 +49,14 @@ Vector3 rotateVectorByQuat(const Vector3 & vector, const Quaternion & quat) {
       ix * quat[3] + iw * -quat[0] + iy * -quat[2] - iz * -quat[1],
       iy * quat[3] + iw * -quat[1] + iz * -quat[0] - ix * -quat[2],
       iz * quat[3] + iw * -quat[2] + ix * -quat[1] - iy * -quat[0],
+  };
+}
+
+Vector3 blendVector(const Vector3 & current, const Vector3 & measurement, double weight) {
+  return {
+      blend(current[0], measurement[0], weight),
+      blend(current[1], measurement[1], weight),
+      blend(current[2], measurement[2], weight),
   };
 }
 
@@ -127,6 +139,10 @@ public:
     velocity_integral_limit_ =
         declare_parameter<double>("velocity_integral_limit", 1.0);
     rate_integral_limit_ = declare_parameter<double>("rate_integral_limit", 0.5);
+    lateral_odom_covariance_threshold_ =
+        declare_parameter<double>("lateral_odom_covariance_threshold", 5.0);
+    odom_velocity_filter_hz_ =
+        declare_parameter<double>("odom_velocity_filter_hz", 6.0);
 
     command_timeout_ = rclcpp::Duration::from_seconds(timeout_sec);
 
@@ -169,12 +185,29 @@ private:
   }
 
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr message) {
+    const auto stamp = rclcpp::Time(message->header.stamp, RCL_ROS_TIME);
     current_altitude_ = message->pose.pose.position.z;
     odom_orientation_ = quatNormalize(
         Quaternion{message->pose.pose.orientation.x, message->pose.pose.orientation.y,
                    message->pose.pose.orientation.z, message->pose.pose.orientation.w});
-    body_velocity_ = Vector3{message->twist.twist.linear.x, message->twist.twist.linear.y,
-                             message->twist.twist.linear.z};
+    const auto measured_body_velocity =
+        Vector3{message->twist.twist.linear.x, message->twist.twist.linear.y,
+                message->twist.twist.linear.z};
+    if (!has_last_odom_time_ || odom_velocity_filter_hz_ <= 0.0) {
+      body_velocity_ = measured_body_velocity;
+    } else {
+      const auto dt = std::max((stamp - last_odom_time_).seconds(), 1e-3);
+      const auto filter_alpha =
+          clamp(1.0 - std::exp(-2.0 * kPi * odom_velocity_filter_hz_ * dt), 0.0, 1.0);
+      body_velocity_ = blendVector(body_velocity_, measured_body_velocity, filter_alpha);
+    }
+    last_odom_time_ = stamp;
+    has_last_odom_time_ = true;
+    lateral_odom_available_ =
+        message->pose.covariance[0] < lateral_odom_covariance_threshold_ &&
+        message->pose.covariance[7] < lateral_odom_covariance_threshold_ &&
+        message->twist.covariance[0] < lateral_odom_covariance_threshold_ &&
+        message->twist.covariance[7] < lateral_odom_covariance_threshold_;
 
     const auto world_velocity = rotateVectorByQuat(body_velocity_, *odom_orientation_);
     world_vertical_velocity_ = world_velocity[2];
@@ -271,6 +304,12 @@ private:
       commanded_velocity_y = commanded_velocity_y_;
       commanded_velocity_z = commanded_velocity_z_;
       commanded_yaw_rate = commanded_yaw_rate_;
+    }
+    if (!lateral_odom_available_) {
+      commanded_velocity_x = 0.0;
+      commanded_velocity_y = 0.0;
+      velocity_integral_[0] = 0.0;
+      velocity_integral_[1] = 0.0;
     }
 
     target_altitude_ = clamp(*target_altitude_ + commanded_velocity_z * dt, 0.3, max_altitude_);
@@ -426,12 +465,16 @@ private:
   double altitude_integral_limit_{1.5};
   double velocity_integral_limit_{1.0};
   double rate_integral_limit_{0.5};
+  double lateral_odom_covariance_threshold_{5.0};
+  double odom_velocity_filter_hz_{6.0};
 
   rclcpp::Duration command_timeout_{0, 0};
   bool has_last_command_time_{false};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   bool has_last_control_time_{false};
   rclcpp::Time last_control_time_{0, 0, RCL_ROS_TIME};
+  bool has_last_odom_time_{false};
+  rclcpp::Time last_odom_time_{0, 0, RCL_ROS_TIME};
   bool has_last_arm_request_time_{false};
   rclcpp::Time last_arm_request_time_{0, 0, RCL_ROS_TIME};
   bool arm_request_pending_{false};
@@ -452,6 +495,7 @@ private:
   Vector3 body_velocity_{0.0, 0.0, 0.0};
   double world_vertical_velocity_{0.0};
   Vector3 angular_velocity_{0.0, 0.0, 0.0};
+  bool lateral_odom_available_{true};
 };
 
 int main(int argc, char ** argv) {
