@@ -5,4 +5,6 @@ src/build
 src/install
 src/log
 .git
+src/PX4-Autopilot/build
+src/PX4-Autopilot/.ccache
 core

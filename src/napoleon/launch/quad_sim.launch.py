@@ -3,10 +3,14 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def _prepend_path(path, existing):
+    return f"{path}:{existing}" if existing else path
 
 
 def _launch_setup(context, *args, **kwargs):
@@ -15,53 +19,100 @@ def _launch_setup(context, *args, **kwargs):
 
     world_choice = LaunchConfiguration("world").perform(context)
     gui_enabled = LaunchConfiguration("gui").perform(context).lower() == "true"
-    demo_mode = LaunchConfiguration("demo").perform(context)
     controller_enabled = LaunchConfiguration("controller").perform(context).lower() == "true"
     takeoff_altitude = float(LaunchConfiguration("takeoff_altitude").perform(context))
 
+    if world_choice != "outdoor":
+        raise RuntimeError(
+            "The PX4-backed launch currently supports the textured outdoor world only. "
+            "Use world:=outdoor."
+        )
+
     package_share = get_package_share_directory("napoleon")
-    model_path = os.path.join(package_share, "models")
+    mavros_share = get_package_share_directory("mavros")
+    px4_root = os.environ.get("PX4_AUTOPILOT_PATH", "/workspace/src/PX4-Autopilot")
+    if not os.path.isdir(px4_root):
+        raise RuntimeError(
+            "PX4_AUTOPILOT_PATH does not point to a PX4-Autopilot checkout. "
+            f"Looked for: {px4_root}"
+        )
+    px4_models = os.path.join(px4_root, "Tools", "simulation", "gz", "models")
+    px4_worlds = os.path.join(px4_root, "Tools", "simulation", "gz", "worlds")
+    px4_plugins = os.path.join(px4_root, "build", "px4_sitl_default", "src", "modules", "simulation", "gz_plugins")
+    px4_server_config = os.path.join(
+        px4_root,
+        "src",
+        "modules",
+        "simulation",
+        "gz_bridge",
+        "server.config",
+    )
+    napoleon_models = os.path.join(package_share, "models")
+    world_path = os.path.join(package_share, "worlds", "outdoor_px4.sdf")
+    world_name = "outdoor_world"
+    px4_sim_model = "x500_mono_cam_down"
+    vehicle_name = "x500_mono_cam_down_0"
+    custom_airframe = os.path.join(
+        px4_root,
+        "ROMFS",
+        "px4fmu_common",
+        "init.d-posix",
+        "airframes",
+        "22000_gz_x500_mono_cam_down_vio",
+    )
+    px4_autostart = "22000" if os.path.isfile(custom_airframe) else "4014"
+
     existing_resource_path = os.environ.get("GZ_SIM_RESOURCE_PATH", "")
     existing_model_path = os.environ.get("GAZEBO_MODEL_PATH", "")
+    existing_plugin_path = os.environ.get("GZ_SIM_SYSTEM_PLUGIN_PATH", "")
+    existing_server_config_path = os.environ.get("GZ_SIM_SERVER_CONFIG_PATH", "")
+    resource_path = napoleon_models
+    resource_path = _prepend_path(px4_models, resource_path)
+    resource_path = _prepend_path(px4_worlds, resource_path)
+    if existing_resource_path:
+        resource_path = _prepend_path(resource_path, existing_resource_path)
 
-    world_map = {
-        "outdoor": ("outdoor_world", os.path.join(package_share, "worlds", "outdoor.sdf")),
-        "warehouse": ("warehouse_world", os.path.join(package_share, "worlds", "warehouse.sdf")),
-        "empty": ("empty_world", os.path.join(package_share, "worlds", "empty.sdf")),
-    }
-    if world_choice not in world_map:
-        raise RuntimeError(f"Unsupported world '{world_choice}'. Expected one of: {', '.join(sorted(world_map))}.")
-    if controller_enabled and demo_mode != "none":
-        raise RuntimeError("The closed-loop controller and the takeoff demo both publish rotor commands. Use only one.")
+    model_path = napoleon_models
+    model_path = _prepend_path(px4_models, model_path)
+    if existing_model_path:
+        model_path = _prepend_path(model_path, existing_model_path)
 
-    world_name, world_path = world_map[world_choice]
+    plugin_path = px4_plugins
+    if existing_plugin_path:
+        plugin_path = _prepend_path(plugin_path, existing_plugin_path)
+
+    server_config_path = px4_server_config
+    if existing_server_config_path:
+        server_config_path = _prepend_path(server_config_path, existing_server_config_path)
+
     gz_args = f"-r -v 4 {'-s ' if not gui_enabled else ''}{world_path}"
 
+    clock_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        output="screen",
+        arguments=[
+            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+        ],
+    )
+
     bridge_arguments = [
-        f"/world/{world_name}/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock",
-        "quadcopter/command/motor_speed@actuator_msgs/msg/Actuators@gz.msgs.Actuators",
-        f"/world/{world_name}/model/quadcopter/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu@gz.msgs.IMU",
         (
-            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/barometer/air_pressure"
+            f"/world/{world_name}/model/{vehicle_name}/link/base_link/sensor/imu_sensor/imu"
+            "@sensor_msgs/msg/Imu@gz.msgs.IMU"
+        ),
+        (
+            f"/world/{world_name}/model/{vehicle_name}/link/base_link/sensor/air_pressure_sensor/air_pressure"
             "@sensor_msgs/msg/FluidPressure@gz.msgs.FluidPressure"
         ),
         (
-            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/image"
+            f"/world/{world_name}/model/{vehicle_name}/link/camera_link/sensor/camera/image"
             "@sensor_msgs/msg/Image@gz.msgs.Image"
         ),
         (
-            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/camera_info"
+            f"/world/{world_name}/model/{vehicle_name}/link/camera_link/sensor/camera/camera_info"
             "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"
         ),
-        (
-            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/image"
-            "@sensor_msgs/msg/Image@gz.msgs.Image"
-        ),
-        (
-            f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/camera_info"
-            "@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo"
-        ),
-        f"/world/{world_name}/dynamic_pose/info@tf2_msgs/msg/TFMessage@gz.msgs.Pose_V",
     ]
 
     gz_sim = IncludeLaunchDescription(
@@ -81,48 +132,55 @@ def _launch_setup(context, *args, **kwargs):
         output="screen",
         arguments=bridge_arguments,
         remappings=[
-            (f"/world/{world_name}/clock", "/clock"),
-            ("quadcopter/command/motor_speed", "/quadcopter/internal/actuators"),
             (
-                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/imu_sensor/imu",
+                f"/world/{world_name}/model/{vehicle_name}/link/base_link/sensor/imu_sensor/imu",
                 "/imu/data",
             ),
             (
-                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/barometer/air_pressure",
+                f"/world/{world_name}/model/{vehicle_name}/link/base_link/sensor/air_pressure_sensor/air_pressure",
                 "/baro/data",
             ),
             (
-                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/image",
-                "/camera/image_raw",
-            ),
-            (
-                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/front_camera/camera_info",
-                "/camera/camera_info",
-            ),
-            (
-                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/image",
+                f"/world/{world_name}/model/{vehicle_name}/link/camera_link/sensor/camera/image",
                 "/odom_camera/image_raw",
             ),
             (
-                f"/world/{world_name}/model/quadcopter/link/base_link/sensor/down_camera/camera_info",
+                f"/world/{world_name}/model/{vehicle_name}/link/camera_link/sensor/camera/camera_info",
                 "/odom_camera/camera_info",
             ),
-            (f"/world/{world_name}/dynamic_pose/info", "/quadcopter/internal/dynamic_pose"),
         ],
         parameters=[{"use_sim_time": True}],
     )
 
-    motor_command_gate = Node(
-        package="napoleon",
-        executable="motor_command_gate",
+    px4_process = ExecuteProcess(
+        cmd=[
+            "/bin/bash",
+            "-lc",
+            (
+                f"cd {px4_root} && "
+                ". build/px4_sitl_default/rootfs/gz_env.sh && "
+                f"PX4_GZ_STANDALONE=1 PX4_SYS_AUTOSTART={px4_autostart} "
+                f"PX4_GZ_MODEL_NAME={vehicle_name} PX4_GZ_WORLD={world_name} "
+                "./build/px4_sitl_default/bin/px4"
+            ),
+        ],
+        output="screen",
+    )
+
+    mavros_node = Node(
+        package="mavros",
+        executable="mavros_node",
         output="screen",
         parameters=[
-            {"use_sim_time": True},
-            {"command_topic": "/quadcopter/command/motor_speeds"},
-            {"actuator_topic": "/quadcopter/internal/actuators"},
-            {"max_motor_speed_rad_s": 900.0},
-            {"command_timeout_sec": 0.2},
-            {"publish_rate_hz": 50.0},
+            os.path.join(mavros_share, "launch", "px4_pluginlists.yaml"),
+            os.path.join(mavros_share, "launch", "px4_config.yaml"),
+            {
+                "fcu_url": "udp://:14540@127.0.0.1:14557",
+                "gcs_url": "",
+                "tgt_system": 1,
+                "tgt_component": 1,
+                "use_sim_time": True,
+            },
         ],
     )
 
@@ -136,102 +194,37 @@ def _launch_setup(context, *args, **kwargs):
             {"camera_info_topic": "/odom_camera/camera_info"},
             {"imu_topic": "/imu/data"},
             {"pressure_topic": "/baro/data"},
-            {"full_odom_topic": "/quadcopter/state/odom"},
-            {"projected_odom_topic": "/odom"},
+            {"full_odom_topic": "/mavros/odometry/out"},
+            {"projected_odom_topic": ""},
+            {"status_topic": "/mavros/companion_process/status"},
             {"world_frame": "odom"},
             {"body_frame": "base_link"},
             {"projected_body_frame": "base_footprint"},
-            {"publish_tf": True},
+            {"publish_tf": False},
+            {"publish_rate_hz": 30.0},
+            {"max_features": 160},
+            {"min_features": 70},
+            {"min_tracked_features": 35},
+            {"lk_max_level": 2},
             {"camera_mount_roll_rad": 0.0},
             {"camera_mount_pitch_rad": 1.57079632679},
             {"camera_mount_yaw_rad": 0.0},
         ],
     )
 
-    ground_truth_odometry = Node(
+    px4_odometry_bridge = Node(
         package="napoleon",
-        executable="ground_truth_odometry",
+        executable="px4_odometry_bridge",
         output="screen",
         parameters=[
             {"use_sim_time": True},
-            {"pose_topic": "/quadcopter/internal/dynamic_pose"},
-            {"full_odom_topic": "/ground_truth/quadcopter/state/odom"},
-            {"projected_odom_topic": "/ground_truth/odom"},
+            {"source_topic": "/mavros/local_position/odom"},
+            {"full_odom_topic": "/quadcopter/state/odom"},
+            {"projected_odom_topic": "/odom"},
             {"world_frame": "odom"},
             {"body_frame": "base_link"},
             {"projected_body_frame": "base_footprint"},
-            {"model_name": "quadcopter"},
-            {"link_name": "base_link"},
-            {"publish_tf": False},
-        ],
-    )
-
-    imu_sensor_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "0.0",
-            "--y",
-            "0.0",
-            "--z",
-            "0.0",
-            "--roll",
-            "0.0",
-            "--pitch",
-            "0.0",
-            "--yaw",
-            "0.0",
-            "--frame-id",
-            "base_link",
-            "--child-frame-id",
-            "quadcopter/base_link/imu_sensor",
-        ],
-    )
-
-    front_camera_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "0.12",
-            "--y",
-            "0.0",
-            "--z",
-            "-0.015",
-            "--roll",
-            "0.0",
-            "--pitch",
-            "0.15",
-            "--yaw",
-            "0.0",
-            "--frame-id",
-            "base_link",
-            "--child-frame-id",
-            "quadcopter/base_link/front_camera",
-        ],
-    )
-
-    front_camera_optical_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "0.0",
-            "--y",
-            "0.0",
-            "--z",
-            "0.0",
-            "--roll",
-            "-1.57079632679",
-            "--pitch",
-            "0.0",
-            "--yaw",
-            "-1.57079632679",
-            "--frame-id",
-            "quadcopter/base_link/front_camera",
-            "--child-frame-id",
-            "quadcopter/base_link/front_camera_optical",
+            {"publish_tf": True},
         ],
     )
 
@@ -244,7 +237,7 @@ def _launch_setup(context, *args, **kwargs):
             "--y",
             "0.0",
             "--z",
-            "-0.09",
+            "0.10",
             "--roll",
             "0.0",
             "--pitch",
@@ -254,7 +247,7 @@ def _launch_setup(context, *args, **kwargs):
             "--frame-id",
             "base_link",
             "--child-frame-id",
-            "quadcopter/base_link/down_camera",
+            "odom_camera",
         ],
     )
 
@@ -275,29 +268,28 @@ def _launch_setup(context, *args, **kwargs):
             "--yaw",
             "-1.57079632679",
             "--frame-id",
-            "quadcopter/base_link/down_camera",
+            "odom_camera",
             "--child-frame-id",
-            "quadcopter/base_link/down_camera_optical",
+            "odom_camera_optical",
         ],
     )
 
     launch_actions = [
-        SetEnvironmentVariable(
-            "GZ_SIM_RESOURCE_PATH",
-            f"{model_path}:{existing_resource_path}" if existing_resource_path else model_path,
-        ),
-        SetEnvironmentVariable(
-            "GAZEBO_MODEL_PATH",
-            f"{model_path}:{existing_model_path}" if existing_model_path else model_path,
-        ),
+        SetEnvironmentVariable("PX4_GZ_MODELS", px4_models),
+        SetEnvironmentVariable("PX4_GZ_WORLDS", px4_worlds),
+        SetEnvironmentVariable("PX4_GZ_PLUGINS", px4_plugins),
+        SetEnvironmentVariable("PX4_GZ_SERVER_CONFIG", px4_server_config),
+        SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", resource_path),
+        SetEnvironmentVariable("GAZEBO_MODEL_PATH", model_path),
+        SetEnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", plugin_path),
+        SetEnvironmentVariable("GZ_SIM_SERVER_CONFIG_PATH", server_config_path),
         gz_sim,
+        clock_bridge,
         parameter_bridge,
-        motor_command_gate,
+        px4_process,
+        mavros_node,
         visual_inertial_odometry,
-        ground_truth_odometry,
-        imu_sensor_tf,
-        front_camera_tf,
-        front_camera_optical_tf,
+        px4_odometry_bridge,
         down_camera_tf,
         down_camera_optical_tf,
     ]
@@ -306,42 +298,17 @@ def _launch_setup(context, *args, **kwargs):
         launch_actions.append(
             Node(
                 package="napoleon",
-                executable="flight_controller",
+                executable="px4_offboard_manager",
                 output="screen",
                 parameters=[
                     {"use_sim_time": True},
                     {"cmd_vel_topic": "/cmd_vel"},
+                    {"state_topic": "/mavros/state"},
                     {"odom_topic": "/quadcopter/state/odom"},
-                    {"imu_topic": "/imu/data"},
-                    {"motor_command_topic": "/quadcopter/command/motor_speeds"},
-                    {"arm_service": "/quadcopter/arm"},
-                    {"auto_arm": True},
+                    {"setpoint_topic": "/mavros/setpoint_position/local"},
+                    {"set_mode_service": "/mavros/set_mode"},
+                    {"arm_service": "/mavros/cmd/arming"},
                     {"takeoff_altitude_m": takeoff_altitude},
-                ],
-            )
-        )
-
-    if demo_mode == "takeoff":
-        launch_actions.append(
-            TimerAction(
-                period=3.0,
-                actions=[
-                    Node(
-                        package="napoleon",
-                        executable="takeoff_demo",
-                        output="screen",
-                        parameters=[
-                            {"use_sim_time": True},
-                            {"arm_service": "/quadcopter/arm"},
-                            {"motor_command_topic": "/quadcopter/command/motor_speeds"},
-                            {"publish_rate_hz": 50.0},
-                            {"takeoff_speed_rad_s": 575.0},
-                            {"spinup_speed_rad_s": 550.0},
-                            {"spinup_duration_sec": 1.0},
-                            {"hold_duration_sec": 1.0},
-                            {"ramp_down_duration_sec": 1.0},
-                        ],
-                    )
                 ],
             )
         )
@@ -355,7 +322,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "world",
                 default_value="outdoor",
-                description="World to load: outdoor, warehouse, or empty.",
+                description="World to load. PX4 launch currently supports the outdoor world.",
             ),
             DeclareLaunchArgument(
                 "gui",
@@ -363,19 +330,14 @@ def generate_launch_description():
                 description="Launch Gazebo with its GUI when true, otherwise run headless.",
             ),
             DeclareLaunchArgument(
-                "demo",
-                default_value="none",
-                description="Optional demo node to run: none or takeoff.",
-            ),
-            DeclareLaunchArgument(
                 "controller",
                 default_value="true",
-                description="Launch the closed-loop flight controller for hover and /cmd_vel tracking.",
+                description="Launch the PX4 offboard bridge that converts /cmd_vel into PX4 setpoints.",
             ),
             DeclareLaunchArgument(
                 "takeoff_altitude",
                 default_value="1.5",
-                description="Target altitude in meters for the flight controller hover setpoint.",
+                description="Target local altitude in meters for the PX4 offboard takeoff setpoint.",
             ),
             OpaqueFunction(function=_launch_setup),
         ]

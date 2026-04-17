@@ -16,6 +16,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(actuator_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(mavros_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS calib3d core imgproc video)
 find_package(rclcpp REQUIRED)
@@ -35,11 +36,32 @@ add_executable(flight_controller src/flight_controller.cpp)
 ament_target_dependencies(flight_controller geometry_msgs nav_msgs rclcpp sensor_msgs std_msgs std_srvs)
 
 add_executable(visual_inertial_odometry src/visual_inertial_odometry.cpp)
-ament_target_dependencies(visual_inertial_odometry geometry_msgs nav_msgs rclcpp sensor_msgs tf2_ros)
+ament_target_dependencies(
+  visual_inertial_odometry
+  geometry_msgs
+  mavros_msgs
+  nav_msgs
+  rclcpp
+  sensor_msgs
+  tf2_ros
+)
+target_include_directories(visual_inertial_odometry PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(visual_inertial_odometry ${OpenCV_LIBS})
 
 add_executable(takeoff_demo src/takeoff_demo.cpp)
 ament_target_dependencies(takeoff_demo rclcpp std_msgs std_srvs)
+
+add_executable(px4_odometry_bridge src/px4_odometry_bridge.cpp)
+ament_target_dependencies(px4_odometry_bridge geometry_msgs nav_msgs rclcpp tf2_ros)
+
+add_executable(px4_offboard_manager src/px4_offboard_manager.cpp)
+ament_target_dependencies(
+  px4_offboard_manager
+  geometry_msgs
+  mavros_msgs
+  nav_msgs
+  rclcpp
+)
 
 install(
   DIRECTORY
@@ -57,6 +79,8 @@ install(
     flight_controller
     ground_truth_odometry
     motor_command_gate
+    px4_odometry_bridge
+    px4_offboard_manager
     takeoff_demo
     visual_inertial_odometry
   RUNTIME DESTINATION lib/${PROJECT_NAME}

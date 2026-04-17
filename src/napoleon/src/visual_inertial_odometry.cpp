@@ -13,6 +13,7 @@
 
 #include <builtin_interfaces/msg/time.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <mavros_msgs/msg/companion_process_status.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
@@ -32,6 +33,10 @@ namespace {
 using Vector3 = std::array<double, 3>;
 using Quaternion = std::array<double, 4>;
 constexpr double kPi = 3.14159265358979323846;
+constexpr uint8_t kCompanionProcessVisualInertialOdometry = 197;
+constexpr uint8_t kMavStateActive = 4;
+constexpr uint8_t kMavStateCritical = 5;
+constexpr uint8_t kMavStateFlightTermination = 8;
 
 double clamp(double value, double lower, double upper) {
   return std::clamp(value, lower, upper);
@@ -193,6 +198,8 @@ public:
         declare_parameter<std::string>("full_odom_topic", "/quadcopter/state/odom");
     projected_odom_topic_ =
         declare_parameter<std::string>("projected_odom_topic", "/odom");
+    status_topic_ =
+        declare_parameter<std::string>("status_topic", "");
     world_frame_ = declare_parameter<std::string>("world_frame", "odom");
     body_frame_ = declare_parameter<std::string>("body_frame", "base_link");
     projected_body_frame_ =
@@ -273,10 +280,18 @@ public:
         std::bind(&VisualInertialOdometry::pressureCallback, this,
                   std::placeholders::_1));
 
-    full_odom_publisher_ =
-        create_publisher<nav_msgs::msg::Odometry>(full_odom_topic_, rclcpp::QoS(10));
-    projected_odom_publisher_ =
-        create_publisher<nav_msgs::msg::Odometry>(projected_odom_topic_, rclcpp::QoS(10));
+    if (!full_odom_topic_.empty()) {
+      full_odom_publisher_ =
+          create_publisher<nav_msgs::msg::Odometry>(full_odom_topic_, rclcpp::QoS(10));
+    }
+    if (!projected_odom_topic_.empty()) {
+      projected_odom_publisher_ =
+          create_publisher<nav_msgs::msg::Odometry>(projected_odom_topic_, rclcpp::QoS(10));
+    }
+    if (!status_topic_.empty()) {
+      companion_status_publisher_ = create_publisher<mavros_msgs::msg::CompanionProcessStatus>(
+          status_topic_, rclcpp::QoS(10));
+    }
     if (publish_tf_) {
       tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     }
@@ -654,6 +669,7 @@ private:
                         angular_velocity_body_, lateral_flow_available);
     publishProjectedOdometry(stamp, position_world_, euler[2], planar_velocity,
                              angular_velocity_body_[2], lateral_flow_available);
+    publishCompanionStatus(stamp, state_time, lateral_flow_available);
     publishTransforms(stamp, position_world_, orientation, euler[2]);
   }
 
@@ -663,6 +679,10 @@ private:
                            const Vector3 & body_velocity,
                            const Vector3 & angular_velocity,
                            bool lateral_flow_available) {
+    if (full_odom_publisher_ == nullptr) {
+      return;
+    }
+
     nav_msgs::msg::Odometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = world_frame_;
@@ -690,6 +710,10 @@ private:
                                 const Vector3 & planar_velocity,
                                 double yaw_rate,
                                 bool lateral_flow_available) {
+    if (projected_odom_publisher_ == nullptr) {
+      return;
+    }
+
     nav_msgs::msg::Odometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = world_frame_;
@@ -712,6 +736,28 @@ private:
     odom.twist.twist.angular.z = yaw_rate;
     fillProjectedCovariance(odom, lateral_flow_available);
     projected_odom_publisher_->publish(odom);
+  }
+
+  void publishCompanionStatus(const builtin_interfaces::msg::Time & stamp,
+                              const rclcpp::Time & state_time,
+                              bool lateral_flow_available) {
+    if (companion_status_publisher_ == nullptr) {
+      return;
+    }
+
+    mavros_msgs::msg::CompanionProcessStatus status;
+    status.header.stamp = stamp;
+    status.component = kCompanionProcessVisualInertialOdometry;
+    if (lateral_flow_available) {
+      status.state = kMavStateActive;
+    } else if (last_flow_measurement_time_.has_value() &&
+               (state_time - *last_flow_measurement_time_).seconds() <=
+                   std::max(1.0, flow_timeout_sec_ * 4.0)) {
+      status.state = kMavStateCritical;
+    } else {
+      status.state = kMavStateFlightTermination;
+    }
+    companion_status_publisher_->publish(status);
   }
 
   void publishTransforms(const builtin_interfaces::msg::Time & stamp,
@@ -908,11 +954,14 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_subscriber_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr full_odom_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr projected_odom_publisher_;
+  rclcpp::Publisher<mavros_msgs::msg::CompanionProcessStatus>::SharedPtr
+      companion_status_publisher_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr publish_timer_;
 
   std::string full_odom_topic_;
   std::string projected_odom_topic_;
+  std::string status_topic_;
   std::string world_frame_;
   std::string body_frame_;
   std::string projected_body_frame_;

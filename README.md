@@ -1,17 +1,16 @@
 # Quadcopter Simulation
 
-This repository builds a ROS 2 Jazzy + Gazebo Harmonic quadcopter simulation with a local outdoor flight range, forward and downward RGB cameras, IMU and barometer sensing, a lightweight visual-inertial odometry path, a closed-loop flight controller, and raw rotor-speed access for lower-level experimentation.
+This repository now runs a PX4 SITL quadcopter in Gazebo Harmonic, with a textured outdoor flight range, an onboard down-facing camera, IMU and barometer sensing, a lightweight visual-inertial odometry node, and a ROS 2 bridge that lets a navigation stack drive the vehicle through `/cmd_vel`.
 
 ## What It Provides
 
-- A local 4-rotor X-configuration quadcopter model
-- A realistic outdoor flight range, a warehouse world, and a minimal empty world
-- A forward RGB camera for perception and a downward RGB camera for odometry
-- An onboard IMU and barometer with basic noise models
-- A rotor command gate with arming, clamping, and command timeout protection
-- A lightweight downward-camera optical-flow odometry fused with IMU and barometer
-- A cascaded hover controller that tracks `/cmd_vel` while holding altitude
-- A short open-loop takeoff demo for raw motor-speed testing
+- PX4 SITL for low-level rate, attitude, position, failsafe, and motor control
+- MAVROS for ROS 2 integration
+- A textured outdoor world tuned for downward visual odometry
+- A downward camera, IMU, and barometer feeding the in-repo VIO node
+- External-vision fusion into PX4 EKF2 as the main odometry source
+- A PX4 offboard bridge that converts ROS `/cmd_vel` into PX4 local-position setpoints
+- Nav2-friendly `/odom` plus `odom -> base_footprint -> base_link` TF
 
 ## Prerequisites
 
@@ -26,7 +25,7 @@ xhost +local:root
 
 ## Quick Start
 
-Build and run the default outdoor scene with the closed-loop controller:
+Build and run the default outdoor PX4 stack:
 
 ```bash
 docker compose up --build
@@ -38,13 +37,13 @@ Run the same stack headless:
 SIM_GUI=false docker compose up --build
 ```
 
-Start the sim without the controller so you can publish your own motor commands:
+Start the sim without the `/cmd_vel` offboard bridge so you can drive PX4 directly through MAVROS:
 
 ```bash
-SIM_CONTROLLER=false SIM_DEMO=none docker compose up --build
+SIM_CONTROLLER=false docker compose up --build
 ```
 
-Open an interactive shell inside the image:
+Open a shell inside the image:
 
 ```bash
 docker compose run --rm simulation bash
@@ -53,92 +52,80 @@ docker compose run --rm simulation bash
 Inside the container, the main launch entrypoint is:
 
 ```bash
-ros2 launch napoleon quad_sim.launch.py world:=outdoor gui:=true controller:=true demo:=none
+ros2 launch napoleon quad_sim.launch.py world:=outdoor gui:=true controller:=true takeoff_altitude:=1.5
 ```
+
+## Runtime Architecture
+
+The control stack is now split cleanly:
+
+- `visual_inertial_odometry` publishes `nav_msgs/msg/Odometry` to `/mavros/odometry/out`
+- PX4 EKF2 fuses that external vision stream and publishes local position through MAVROS
+- `px4_odometry_bridge` republishes PX4 local position as `/quadcopter/state/odom` and `/odom`
+- `px4_offboard_manager` converts `/cmd_vel` into PX4 local position setpoints on `/mavros/setpoint_position/local`
+
+That means PX4 owns stabilization and motor control, while ROS owns perception, navigation, and high-level motion commands.
 
 ## Control Interface
 
-The default launch starts the native C++ `visual_inertial_odometry` and `flight_controller` nodes. The controller auto-arms the quadcopter, climbs to the configured hover altitude, and listens on `/cmd_vel`, while the odometry stack fuses downward-camera motion with the IMU and barometer.
+With `controller:=true`, the offboard bridge automatically:
 
-If the visual flow estimate drops out, the odometry node now zeroes its lateral velocity output and raises lateral covariance instead of publishing drift. The controller treats that as an estimator-health fault and holds altitude / yaw while refusing planar motion until lateral odometry becomes trustworthy again.
+- streams warm-up setpoints
+- switches PX4 to `OFFBOARD`
+- arms the vehicle
+- climbs to `takeoff_altitude`
+- keeps altitude while integrating planar `/cmd_vel`
 
-The controller uses a cascaded control stack:
-
-- body-frame velocity PI
-- attitude-to-body-rate conversion
-- body-rate PI
-- rotor mixer
-
-Command horizontal motion and yaw:
+Command planar motion and yaw:
 
 ```bash
 ros2 topic pub --rate 20 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5, y: 0.0, z: 0.0}, angular: {z: 0.3}}"
 ```
 
-Key runtime topics:
+If you disable the bridge with `controller:=false`, PX4 and MAVROS still start and you can command the vehicle through standard MAVROS topics and services instead.
+
+## Key Topics
 
 - `/cmd_vel`
   `geometry_msgs/msg/Twist`
-  planar velocity and yaw-rate command for the closed-loop controller
+  high-level planar velocity and yaw-rate command for the PX4 offboard bridge
 - `/odom`
   `nav_msgs/msg/Odometry`
-  planar visual-inertial odometry for navigation in the `odom` frame with child frame `base_footprint`
+  projected PX4 local odometry for navigation, frame `odom`, child `base_footprint`
 - `/quadcopter/state/odom`
   `nav_msgs/msg/Odometry`
-  full 6DoF visual-inertial flight-state odometry used by the controller with child frame `base_link`
+  full PX4 local odometry, frame `odom`, child `base_link`
+- `/mavros/odometry/out`
+  `nav_msgs/msg/Odometry`
+  raw VIO output sent to PX4 EKF2 as external vision
+- `/mavros/local_position/odom`
+  `nav_msgs/msg/Odometry`
+  PX4 EKF2 local-position estimate from MAVROS
+- `/mavros/state`
+  `mavros_msgs/msg/State`
 - `/imu/data`
   `sensor_msgs/msg/Imu`
 - `/baro/data`
   `sensor_msgs/msg/FluidPressure`
-- `/camera/image_raw`
-  `sensor_msgs/msg/Image`
-- `/camera/camera_info`
-  `sensor_msgs/msg/CameraInfo`
 - `/odom_camera/image_raw`
   `sensor_msgs/msg/Image`
 - `/odom_camera/camera_info`
   `sensor_msgs/msg/CameraInfo`
 
-If you want raw rotor-speed control instead, launch with `controller:=false`, then arm the vehicle:
-
-```bash
-ros2 service call /quadcopter/arm std_srvs/srv/SetBool "{data: true}"
-```
-
-Publish rotor speeds manually:
-
-```bash
-ros2 topic pub --rate 30 /quadcopter/command/motor_speeds std_msgs/msg/Float64MultiArray "{data: [565.0, 565.0, 565.0, 565.0]}"
-```
-
-Topic contract:
-
-- `/quadcopter/command/motor_speeds`
-  `std_msgs/msg/Float64MultiArray`
-  rotor order: `front_left, front_right, rear_right, rear_left`
-- `/quadcopter/arm`
-  `std_srvs/srv/SetBool`
-
-The motor gate clamps commands above the configured maximum, rejects invalid arrays, and forces all four motors to zero if commands go stale for more than 200 ms or the vehicle is disarmed.
-
 ## Launch Arguments
 
 `quad_sim.launch.py` supports:
 
-- `world:=outdoor|warehouse|empty`
+- `world:=outdoor`
 - `gui:=true|false`
 - `controller:=true|false`
 - `takeoff_altitude:=1.5`
-- `demo:=none|takeoff`
 
 ## Notes
 
-- The default Docker workflow uses `SIM_WORLD=outdoor`, `SIM_GUI=true`, `SIM_CONTROLLER=true`, and `SIM_DEMO=none`.
-- When `controller:=true`, the controller keeps the drone airborne at `takeoff_altitude` and a ROS navigation stack can command it through `/cmd_vel`.
-- For Nav2-style configs, use `odom` as the global/local odom frame and `base_footprint` as `robot_base_frame`. The controller itself consumes `/quadcopter/state/odom`.
-- The `outdoor` world is now the default and is designed as a drone test range with public Fuel `grasspatch` tiles plus local textured asphalt, buildings, trees, and a marked flight pad. The `warehouse` world remains useful for indoor testing, and both textured worlds give the downward camera more usable features than `empty`.
-- The in-repo visual-inertial odometry is intentionally lightweight and should be treated as experimental. If you want a more realistic navigation-grade stack, use a mature VIO package such as OpenVINS, VINS-Fusion, or ORB-SLAM3, and add a downward range sensor or stereo pair.
-- The built-in `takeoff` demo is intentionally simple and should only be used with `controller:=false`.
-- The `outdoor` scene downloads public Fuel grass tiles on first run. The `warehouse` and `empty` scenes are fully local.
-- The repo does not include PX4 or MAVROS in the default path.
-- Nav2 integration still needs your choice of localization/costmap policy on top of this stack. The drone now exposes a `/cmd_vel` control path and a camera/IMU/baro odometry source that Nav2 can be wired against, but realistic autonomous flight will still benefit from a stronger estimator than the minimal one included here.
+- The default Docker workflow uses `SIM_WORLD=outdoor`, `SIM_GUI=true`, and `SIM_CONTROLLER=true`.
+- The PX4-backed launch currently targets the textured outdoor world only.
+- PX4 uses a custom SITL airframe in this repo that disables GPS and range fusion, enables EKF2 external-vision fusion, and treats vision as the main height reference.
+- The in-repo VIO remains intentionally lightweight. It is now used as an external-vision source for PX4, which is much more robust than using it directly for motor control.
+- The outdoor scene still downloads public Fuel grass tiles on first run.
+- This setup is Nav2-drivable through `/cmd_vel`, but Nav2 is still a ground-navigation package. For truly aerial planning you may eventually want a planner that reasons in 3D.
